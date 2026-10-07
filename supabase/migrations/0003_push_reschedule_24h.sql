@@ -1,0 +1,6 @@
+-- 0003: התראות פוש, הזזת תור, חוק 24 שעות
+-- *** המיגרציה הזו כבר הוחלה על ה-DB ע"י Claude – הקובץ לתיעוד בלבד ***
+-- כוללת: app_secrets (מפתחות VAPID), push_subscriptions, save_push_subscription,
+-- _available_slots (עם החרגת תור להזזה), get_reschedule_slots, reschedule_appointment,
+-- ביטול עד 24 שעות, get_appointment_by_token מורחב, טריגר notify_new_appointment
+-- (pg_net → Edge Function send-push), ו-cron כל 30 דק' לתזכורות.

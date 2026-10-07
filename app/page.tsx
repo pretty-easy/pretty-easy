@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { supabase, Service, Slot } from "@/lib/supabase";
+import { subscribeClientPush, pushResultMessage } from "@/lib/push";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
@@ -59,8 +60,17 @@ export default function BookingPage() {
     supabase
       .from("services")
       .select("*")
+      .eq("is_active", true) // גם כשמחוברים כאדמין – רק טיפולים פעילים
       .order("price", { ascending: false })
-      .then(({ data }) => setServices((data as Service[]) ?? []));
+      .then(({ data }) => {
+        const list = (data as Service[]) ?? [];
+        setServices(list);
+        // טיפול יחיד? מדלגים ישר לבחירת מועד
+        if (list.length === 1) {
+          setService(list[0]);
+          setStep((s) => (s === 1 ? 2 : s));
+        }
+      });
   }, []);
 
   // אילו ימים בכלל פנויים – ובחירה אוטומטית של היום הפנוי הראשון
@@ -184,9 +194,11 @@ export default function BookingPage() {
 
       {step === 2 && service && (
         <section className="pb-24">
-          <button className="btn-ghost mb-1 text-sm" onClick={() => setStep(1)}>
-            → חזרה לטיפולים
-          </button>
+          {services.length > 1 && (
+            <button className="btn-ghost mb-1 text-sm" onClick={() => setStep(1)}>
+              → חזרה לטיפולים
+            </button>
+          )}
           <h1 className="mb-1 text-xl font-bold">מתי נוח לך?</h1>
           <p className="mb-4 text-sm text-plum-500">
             {service.name} · {service.duration_minutes} דק' · ₪{Number(service.price)}
@@ -364,20 +376,49 @@ export default function BookingPage() {
             {service.name} · יום {DAY_NAMES[selectedDay.date.getDay()]}{" "}
             {selectedDay.date.toLocaleDateString("he-IL")} בשעה {slot.label}
           </p>
-          <div className="card w-full text-sm">
-            <p className="mb-2">צריך לבטל? אפשר דרך הקישור:</p>
+          <NotifyButton token={cancelToken!} />
+
+          <div className="card mt-4 w-full text-sm">
+            <p className="mb-2">צריך לשנות או לבטל? זה הקישור האישי שלך:</p>
             <a
               href={`/cancel/${cancelToken}`}
               className="break-all font-medium text-blush-600 underline"
             >
-              ביטול התור
+              ניהול התור – שינוי או ביטול
             </a>
             <p className="mt-3 text-xs text-plum-500">
-              שמרי את הקישור – הוא הדרך לבטל בלי להתקשר
+              שמרי את הקישור · שינוי וביטול עד 24 שעות לפני התור
             </p>
+          </div>
+
+          <div className="card mt-4 w-full text-sm text-plum-500">
+            💡 טיפ: שמרי את האתר למסך הבית (שיתוף ← הוספה למסך הבית) וזה יעבוד כמו
+            אפליקציה
           </div>
         </section>
       )}
     </main>
+  );
+}
+
+function NotifyButton({ token }: { token: string }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="w-full">
+      <button
+        className="btn-primary w-full"
+        disabled={busy || msg === "ההתראות הופעלו ✓"}
+        onClick={async () => {
+          setBusy(true);
+          const r = await subscribeClientPush(token);
+          setMsg(pushResultMessage(r));
+          setBusy(false);
+        }}
+      >
+        🔔 שלחו לי תזכורת יום לפני
+      </button>
+      {msg && <p className="mt-2 text-center text-xs text-plum-500">{msg}</p>}
+    </div>
   );
 }

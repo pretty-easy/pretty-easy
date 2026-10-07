@@ -11,6 +11,7 @@ import {
   BlockedTime,
   Client,
 } from "@/lib/supabase";
+import { subscribeAdminPush, pushResultMessage } from "@/lib/push";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const TABS = ["יומן", "טיפולים", "שעות עבודה", "חסימות", "לקוחות"] as const;
@@ -89,15 +90,31 @@ function Login() {
 
 function Dashboard() {
   const [tab, setTab] = useState<Tab>("יומן");
+  const [pushMsg, setPushMsg] = useState<string | null>(null);
 
   return (
     <main className="mx-auto max-w-2xl px-4 pb-16">
       <header className="flex items-center justify-between py-4">
         <Image src="/logo.png" alt="Pretty Easy" width={140} height={42} />
-        <button className="btn-ghost text-sm" onClick={() => supabase.auth.signOut()}>
-          יציאה
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="btn-ghost text-sm"
+            title="קבלת התראה על כל תור חדש"
+            onClick={async () => {
+              const r = await subscribeAdminPush();
+              setPushMsg(pushResultMessage(r));
+            }}
+          >
+            🔔
+          </button>
+          <button className="btn-ghost text-sm" onClick={() => supabase.auth.signOut()}>
+            יציאה
+          </button>
+        </div>
       </header>
+      {pushMsg && (
+        <p className="mb-3 rounded-xl bg-blush-100 p-2 text-center text-xs">{pushMsg}</p>
+      )}
 
       <nav className="-mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-1">
         {TABS.map((t) => (
@@ -271,6 +288,16 @@ function ServicesTab() {
     load();
   }
 
+  async function remove(s: Service) {
+    if (!confirm(`למחוק את "${s.name}" לצמיתות?`)) return;
+    const { error } = await supabase.from("services").delete().eq("id", s.id);
+    if (error) {
+      alert("אי אפשר למחוק טיפול שכבר נקבעו עליו תורים – אפשר להשבית אותו במקום");
+      return;
+    }
+    load();
+  }
+
   function startEdit(s: Service) {
     setEditingId(s.id);
     setEdit({ name: s.name, duration: s.duration_minutes, price: Number(s.price) });
@@ -387,12 +414,18 @@ function ServicesTab() {
                 {s.duration_minutes} דק' · ₪{Number(s.price)}
               </div>
             </div>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap justify-end gap-1">
               <button className="btn-ghost text-sm" onClick={() => startEdit(s)}>
                 עריכה ✏️
               </button>
               <button className="btn-ghost text-sm" onClick={() => toggle(s)}>
                 {s.is_active ? "השבתה" : "הפעלה"}
+              </button>
+              <button
+                className="btn-ghost text-sm text-red-700"
+                onClick={() => remove(s)}
+              >
+                מחיקה
               </button>
             </div>
           </div>
