@@ -10,11 +10,13 @@ import {
   WorkingHour,
   BlockedTime,
   Client,
+  Addon,
+  priceLabel,
 } from "@/lib/supabase";
 import { subscribeAdminPush, pushResultMessage } from "@/lib/push";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
-const TABS = ["יומן", "טיפולים", "שעות עבודה", "חסימות", "לקוחות"] as const;
+const TABS = ["יומן", "טיפולים", "תוספות", "שעות עבודה", "חסימות", "לקוחות"] as const;
 type Tab = (typeof TABS)[number];
 
 function startOfWeek(d: Date) {
@@ -130,6 +132,7 @@ function Dashboard() {
 
       {tab === "יומן" && <CalendarTab />}
       {tab === "טיפולים" && <ServicesTab />}
+      {tab === "תוספות" && <AddonsTab />}
       {tab === "שעות עבודה" && <HoursTab />}
       {tab === "חסימות" && <BlockedTab />}
       {tab === "לקוחות" && <ClientsTab />}
@@ -296,6 +299,11 @@ function CalendarTab() {
                 <div className="min-w-0">
                   <div className="font-semibold">
                     {a.client_name} · {a.services?.name}
+                    {a.addons && a.addons.length > 0 && (
+                      <span className="font-normal text-plum-500">
+                        {" "}+ {a.addons.map((x) => x.name).join(" + ")}
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-plum-500">
                     יום {DAY_NAMES[new Date(a.starts_at).getDay()]}{" "}
@@ -506,6 +514,7 @@ function CalendarTab() {
                         </div>
                         <div className="truncate opacity-80">
                           {a.services?.name}
+                          {a.addons && a.addons.length > 0 && ` +${a.addons.length}`}
                           {isPending && " · ממתין ⏳"}
                         </div>
                       </button>
@@ -559,6 +568,11 @@ function CalendarTab() {
               })}{" "}
               · {fmtTime(sel.starts_at)}–{fmtTime(sel.ends_at)}
             </p>
+            {sel.addons && sel.addons.length > 0 && (
+              <p className="text-sm text-plum-500">
+                תוספות: {sel.addons.map((x) => `${x.name} (${priceLabel(x.price, x.price_max)})`).join(", ")}
+              </p>
+            )}
             <a href={`tel:${sel.client_phone}`} className="text-sm text-blush-600" dir="ltr">
               {sel.client_phone} 📞
             </a>
@@ -663,8 +677,9 @@ function ServicesTab() {
   const [name, setName] = useState("");
   const [duration, setDuration] = useState(60);
   const [price, setPrice] = useState(120);
+  const [priceMax, setPriceMax] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ name: "", duration: 60, price: 0 });
+  const [edit, setEdit] = useState({ name: "", duration: 60, price: 0, priceMax: "" });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -678,10 +693,14 @@ function ServicesTab() {
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
-    await supabase
-      .from("services")
-      .insert({ name, duration_minutes: duration, price });
+    await supabase.from("services").insert({
+      name,
+      duration_minutes: duration,
+      price,
+      price_max: priceMax === "" ? null : +priceMax,
+    });
     setName("");
+    setPriceMax("");
     load();
   }
 
@@ -702,14 +721,24 @@ function ServicesTab() {
 
   function startEdit(s: Service) {
     setEditingId(s.id);
-    setEdit({ name: s.name, duration: s.duration_minutes, price: Number(s.price) });
+    setEdit({
+      name: s.name,
+      duration: s.duration_minutes,
+      price: Number(s.price),
+      priceMax: s.price_max == null ? "" : String(Number(s.price_max)),
+    });
   }
 
   async function saveEdit(id: string) {
     setSaving(true);
     await supabase
       .from("services")
-      .update({ name: edit.name, duration_minutes: edit.duration, price: edit.price })
+      .update({
+        name: edit.name,
+        duration_minutes: edit.duration,
+        price: edit.price,
+        price_max: edit.priceMax === "" ? null : +edit.priceMax,
+      })
       .eq("id", id);
     setSaving(false);
     setEditingId(null);
@@ -747,6 +776,17 @@ function ServicesTab() {
               min={0}
               value={price}
               onChange={(e) => setPrice(+e.target.value)}
+            />
+          </div>
+          <div className="flex-1">
+            <label className="label">עד ₪ (לא חובה)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              placeholder="טווח"
+              value={priceMax}
+              onChange={(e) => setPriceMax(e.target.value)}
             />
           </div>
         </div>
@@ -791,6 +831,17 @@ function ServicesTab() {
                   onChange={(e) => setEdit({ ...edit, price: +e.target.value })}
                 />
               </div>
+              <div className="flex-1">
+                <label className="label">עד ₪</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  placeholder="–"
+                  value={edit.priceMax}
+                  onChange={(e) => setEdit({ ...edit, priceMax: e.target.value })}
+                />
+              </div>
             </div>
             <div className="flex gap-2">
               <button className="btn-primary flex-1" disabled={saving}>
@@ -813,7 +864,7 @@ function ServicesTab() {
             <div>
               <div className="font-semibold">{s.name}</div>
               <div className="text-sm text-plum-500">
-                {s.duration_minutes} דק' · ₪{Number(s.price)}
+                {s.duration_minutes} דק' · {priceLabel(s.price, s.price_max)}
               </div>
             </div>
             <div className="flex flex-wrap justify-end gap-1">
@@ -832,6 +883,198 @@ function ServicesTab() {
             </div>
           </div>
         )
+      )}
+    </section>
+  );
+}
+
+/* ===== תוספות ===== */
+
+function AddonsTab() {
+  const [addons, setAddons] = useState<Addon[]>([]);
+  const [name, setName] = useState("");
+  const [duration, setDuration] = useState(15);
+  const [price, setPrice] = useState(20);
+  const [priceMax, setPriceMax] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [edit, setEdit] = useState({ name: "", duration: 0, price: 0, priceMax: "" });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("addons").select("*").order("created_at");
+    setAddons((data as Addon[]) ?? []);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    await supabase.from("addons").insert({
+      name,
+      duration_minutes: duration,
+      price,
+      price_max: priceMax === "" ? null : +priceMax,
+    });
+    setName("");
+    setPriceMax("");
+    load();
+  }
+
+  async function toggle(a: Addon) {
+    await supabase.from("addons").update({ is_active: !a.is_active }).eq("id", a.id);
+    load();
+  }
+
+  async function remove(a: Addon) {
+    if (!confirm(`למחוק את התוספת "${a.name}"?`)) return;
+    await supabase.from("addons").delete().eq("id", a.id);
+    load();
+  }
+
+  function startEdit(a: Addon) {
+    setEditingId(a.id);
+    setEdit({
+      name: a.name,
+      duration: a.duration_minutes,
+      price: Number(a.price),
+      priceMax: a.price_max == null ? "" : String(Number(a.price_max)),
+    });
+  }
+
+  async function saveEdit(id: string) {
+    setSaving(true);
+    await supabase
+      .from("addons")
+      .update({
+        name: edit.name,
+        duration_minutes: edit.duration,
+        price: edit.price,
+        price_max: edit.priceMax === "" ? null : +edit.priceMax,
+      })
+      .eq("id", id);
+    setSaving(false);
+    setEditingId(null);
+    load();
+  }
+
+  const fields = (
+    v: { duration: number; price: number; priceMax: string },
+    set: (k: "duration" | "price" | "priceMax", val: number | string) => void
+  ) => (
+    <div className="flex gap-3">
+      <div className="flex-1">
+        <label className="label">תוספת זמן (דק')</label>
+        <input
+          className="input"
+          type="number"
+          min={0}
+          step={5}
+          value={v.duration}
+          onChange={(e) => set("duration", +e.target.value)}
+        />
+      </div>
+      <div className="flex-1">
+        <label className="label">מחיר (₪)</label>
+        <input
+          className="input"
+          type="number"
+          min={0}
+          value={v.price}
+          onChange={(e) => set("price", +e.target.value)}
+        />
+      </div>
+      <div className="flex-1">
+        <label className="label">עד ₪ (לא חובה)</label>
+        <input
+          className="input"
+          type="number"
+          min={0}
+          placeholder="טווח"
+          value={v.priceMax}
+          onChange={(e) => set("priceMax", e.target.value)}
+        />
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="flex flex-col gap-4">
+      <p className="text-sm text-plum-500">
+        תוספות מוצעות ללקוחה אחרי בחירת הטיפול. תוספת הזמן נלקחת בחשבון ביומן.
+      </p>
+      <form onSubmit={add} className="card flex flex-col gap-3">
+        <h3 className="font-bold">הוספת תוספת</h3>
+        <input
+          className="input"
+          placeholder="שם התוספת (למשל: קישוטים)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        {fields({ duration, price, priceMax }, (k, v) => {
+          if (k === "duration") setDuration(v as number);
+          else if (k === "price") setPrice(v as number);
+          else setPriceMax(v as string);
+        })}
+        <button className="btn-primary">הוספה</button>
+      </form>
+
+      {addons.map((a) =>
+        editingId === a.id ? (
+          <form
+            key={a.id}
+            className="card flex flex-col gap-3 ring-2 ring-blush-300"
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveEdit(a.id);
+            }}
+          >
+            <input
+              className="input"
+              value={edit.name}
+              onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+              required
+            />
+            {fields(edit, (k, v) => setEdit({ ...edit, [k === "priceMax" ? "priceMax" : k]: v }))}
+            <div className="flex gap-2">
+              <button className="btn-primary flex-1" disabled={saving}>
+                {saving ? "שומרת…" : "שמירה"}
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => setEditingId(null)}>
+                ביטול
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div
+            key={a.id}
+            className={`card flex items-center justify-between ${!a.is_active ? "opacity-50" : ""}`}
+          >
+            <div>
+              <div className="font-semibold">{a.name}</div>
+              <div className="text-sm text-plum-500">
+                {a.duration_minutes > 0 ? `+${a.duration_minutes} דק' · ` : ""}
+                {priceLabel(a.price, a.price_max)}
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-1">
+              <button className="btn-ghost text-sm" onClick={() => startEdit(a)}>
+                עריכה ✏️
+              </button>
+              <button className="btn-ghost text-sm" onClick={() => toggle(a)}>
+                {a.is_active ? "השבתה" : "הפעלה"}
+              </button>
+              <button className="btn-ghost text-sm text-red-700" onClick={() => remove(a)}>
+                מחיקה
+              </button>
+            </div>
+          </div>
+        )
+      )}
+      {addons.length === 0 && (
+        <p className="text-center text-sm text-plum-500">אין תוספות עדיין</p>
       )}
     </section>
   );

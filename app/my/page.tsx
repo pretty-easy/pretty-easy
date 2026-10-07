@@ -10,10 +10,25 @@ type MyAppt = {
   cancel_token: string;
   service_name: string;
   price: number;
+  price_max?: number | null;
+  addons?: { name: string; price: number; price_max: number | null }[];
   starts_at: string;
   status: "pending" | "confirmed" | "cancelled";
   is_past: boolean;
 };
+
+function apptPrice(a: MyAppt) {
+  const lo = Number(a.price) + (a.addons ?? []).reduce((s, x) => s + Number(x.price), 0);
+  const hi =
+    Number(a.price_max ?? a.price) +
+    (a.addons ?? []).reduce((s, x) => s + Number(x.price_max ?? x.price), 0);
+  return hi > lo ? `₪${lo}–${hi}` : `₪${lo}`;
+}
+
+function apptTitle(a: MyAppt) {
+  const names = (a.addons ?? []).map((x) => x.name);
+  return names.length ? `${a.service_name} + ${names.join(" + ")}` : a.service_name;
+}
 
 type MyData = { client_name: string; appointments: MyAppt[] };
 
@@ -126,8 +141,8 @@ export default function MyPage() {
               <div className="flex flex-col gap-3">
                 {upcoming.map((a) => (
                   <div key={a.cancel_token} className="card">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="font-semibold">{a.service_name}</span>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="font-semibold">{apptTitle(a)}</span>
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[a.status].cls}`}
                       >
@@ -177,7 +192,7 @@ export default function MyPage() {
                     className="flex items-center justify-between px-4 py-3"
                   >
                     <div>
-                      <div className="font-medium">{a.service_name}</div>
+                      <div className="font-medium">{apptTitle(a)}</div>
                       <div className="text-xs text-plum-500">
                         {new Date(a.starts_at).toLocaleDateString("he-IL", {
                           day: "numeric",
@@ -186,7 +201,7 @@ export default function MyPage() {
                         })}
                       </div>
                     </div>
-                    <span className="text-plum-500">₪{Number(a.price)}</span>
+                    <span className="text-plum-500">{apptPrice(a)}</span>
                   </div>
                 ))}
               </div>

@@ -1,0 +1,5 @@
+-- 0006: תוספות לטיפול + טווחי מחירים
+-- *** כבר הוחלה על ה-DB ע"י Claude – לתיעוד בלבד ***
+-- טבלת addons; services.price_max; appointments.addons (snapshot);
+-- פונקציות v2 (get_available_slots_v2 / get_available_dates_v2 / book_appointment_v2)
+-- עם p_addon_ids – משך כולל = טיפול + תוספות; הזזות שומרות משך אמיתי.

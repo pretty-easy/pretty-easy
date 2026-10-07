@@ -12,8 +12,33 @@ export type Service = {
   name: string;
   duration_minutes: number;
   price: number;
+  price_max: number | null;
   is_active: boolean;
 };
+
+export type Addon = {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price: number;
+  price_max: number | null;
+  is_active: boolean;
+};
+
+export type ApptAddon = {
+  id: string;
+  name: string;
+  price: number;
+  price_max: number | null;
+  duration_minutes: number;
+};
+
+// "₪120" או "₪120–180"
+export function priceLabel(min: number, max?: number | null) {
+  const lo = Number(min);
+  const hi = max == null ? null : Number(max);
+  return hi != null && hi > lo ? `₪${lo}–${hi}` : `₪${lo}`;
+}
 
 export type Slot = {
   slot_start: string; // timestamptz ISO
@@ -30,6 +55,7 @@ export type Appointment = {
   notes: string | null;
   status: "pending" | "confirmed" | "cancelled";
   cancel_token?: string;
+  addons?: ApptAddon[];
   services?: { name: string } | null;
 };
 

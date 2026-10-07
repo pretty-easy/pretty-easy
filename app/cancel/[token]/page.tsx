@@ -15,6 +15,7 @@ type Info = {
   client_name: string;
   status: string;
   can_modify: boolean;
+  addons?: { name: string }[];
 };
 
 function toDateStr(d: Date) {
@@ -139,7 +140,7 @@ export default function ManagePage() {
         </div>
       )}
 
-      {info && info !== "loading" && info.status === "cancelled" && !done && (
+      {info && info !== "loading" && info.status === "cancelled" && done !== "cancelled" && (
         <div className="card w-full">
           <h1 className="mb-2 text-xl font-bold">התור הזה בוטל</h1>
           <a href="/" className="btn-primary mt-4 inline-block">
@@ -155,7 +156,14 @@ export default function ManagePage() {
               {done === "moved" ? "התור עודכן! 🎉" : `היי ${info.client_name} 👋`}
             </h1>
             <p className="mb-1 text-sm text-plum-500">התור שלך:</p>
-            <p className="font-semibold">{info.service_name}</p>
+            <p className="font-semibold">
+              {info.service_name}
+              {info.addons && info.addons.length > 0 && (
+                <span className="font-normal text-plum-500">
+                  {" "}+ {info.addons.map((a) => a.name).join(" + ")}
+                </span>
+              )}
+            </p>
             <p className="mb-2 font-semibold">{dateText}</p>
             <span
               className={`inline-block rounded-full px-3 py-1 text-xs ${
