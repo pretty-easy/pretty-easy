@@ -316,6 +316,33 @@ export default function BookingPage() {
           </p>
 
           <div className="flex flex-col gap-3">
+            {/* אופציה מפורשת: בלי תוספות */}
+            <button
+              onClick={() => setChosen([])}
+              className={`card flex items-center justify-between text-right transition active:scale-[0.99] ${
+                chosen.length === 0 ? "ring-2 ring-plum-700" : ""
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-sm ${
+                    chosen.length === 0
+                      ? "border-plum-700 bg-plum-700 text-white"
+                      : "border-blush-300 text-transparent"
+                  }`}
+                >
+                  ✓
+                </span>
+                <div>
+                  <div className="font-semibold">בלי תוספות</div>
+                  <div className="text-xs text-plum-500">רק {service.name}</div>
+                </div>
+              </div>
+              <div className="font-bold text-blush-600">
+                {priceLabel(service.price, service.price_max)}
+              </div>
+            </button>
+
             {addons.map((a) => {
               const on = chosenIds.includes(a.id);
               return (
@@ -365,8 +392,12 @@ export default function BookingPage() {
                     : chosen.map((a) => a.name).join(" + ")}
                 </div>
               </div>
-              <button className="btn-primary min-w-[112px]" onClick={() => setStep(TIME)}>
-                המשך
+              <button className="btn-primary min-w-[112px] whitespace-nowrap" onClick={() => setStep(TIME)}>
+                {chosen.length === 0
+                  ? "המשך בלי תוספות"
+                  : chosen.length === 1
+                  ? "המשך עם תוספת"
+                  : `המשך עם ${chosen.length} תוספות`}
               </button>
             </div>
           </div>
