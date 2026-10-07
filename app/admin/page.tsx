@@ -12,6 +12,7 @@ import {
   Client,
   Addon,
   priceLabel,
+  durationLabel,
 } from "@/lib/supabase";
 import { subscribeAdminPush, pushResultMessage } from "@/lib/push";
 
@@ -864,7 +865,7 @@ function ServicesTab() {
             <div>
               <div className="font-semibold">{s.name}</div>
               <div className="text-sm text-plum-500">
-                {s.duration_minutes} דק' · {priceLabel(s.price, s.price_max)}
+                {durationLabel(s.duration_minutes)} · {priceLabel(s.price, s.price_max)}
               </div>
             </div>
             <div className="flex flex-wrap justify-end gap-1">
@@ -1055,7 +1056,7 @@ function AddonsTab() {
             <div>
               <div className="font-semibold">{a.name}</div>
               <div className="text-sm text-plum-500">
-                {a.duration_minutes > 0 ? `+${a.duration_minutes} דק' · ` : ""}
+                {a.duration_minutes > 0 ? `+${durationLabel(a.duration_minutes)} · ` : ""}
                 {priceLabel(a.price, a.price_max)}
               </div>
             </div>

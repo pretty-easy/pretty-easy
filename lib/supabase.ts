@@ -33,6 +33,18 @@ export type ApptAddon = {
   duration_minutes: number;
 };
 
+// 45 → "45 דק'" · 60 → "שעה" · 75 → "שעה ו-15 דק'" · 90 → "שעה וחצי" · 120 → "שעתיים"
+export function durationLabel(min: number) {
+  const m = Math.round(Number(min));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h === 0) return `${r} דק'`;
+  const hours = h === 1 ? "שעה" : h === 2 ? "שעתיים" : `${h} שעות`;
+  if (r === 0) return hours;
+  if (r === 30) return `${hours} וחצי`;
+  return `${hours} ו-${r} דק'`;
+}
+
 // "₪120" או "₪120–180"
 export function priceLabel(min: number, max?: number | null) {
   const lo = Number(min);

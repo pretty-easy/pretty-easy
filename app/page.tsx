@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { supabase, Service, Slot, Addon, priceLabel } from "@/lib/supabase";
+import { supabase, Service, Slot, Addon, priceLabel, durationLabel } from "@/lib/supabase";
 import { subscribeClientPush, pushResultMessage } from "@/lib/push";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
@@ -290,7 +290,7 @@ export default function BookingPage() {
               >
                 <div>
                   <div className="text-base font-semibold">{s.name}</div>
-                  <div className="text-sm text-plum-500">{s.duration_minutes} דקות</div>
+                  <div className="text-sm text-plum-500">{durationLabel(s.duration_minutes)}</div>
                 </div>
                 <div className="text-lg font-bold text-blush-600">
                   {priceLabel(s.price, s.price_max)}
@@ -341,7 +341,7 @@ export default function BookingPage() {
                     <div>
                       <div className="font-semibold">{a.name}</div>
                       {a.duration_minutes > 0 && (
-                        <div className="text-xs text-plum-500">+{a.duration_minutes} דק'</div>
+                        <div className="text-xs text-plum-500">+{durationLabel(a.duration_minutes)}</div>
                       )}
                     </div>
                   </div>
@@ -357,7 +357,7 @@ export default function BookingPage() {
             <div className="mx-auto flex max-w-md items-center gap-3">
               <div className="flex-1 text-sm">
                 <div className="font-semibold">
-                  {total && priceLabel(total.lo, total.hi)} · {totalMinutes} דק'
+                  {total && priceLabel(total.lo, total.hi)} · {durationLabel(totalMinutes)}
                 </div>
                 <div className="text-plum-500">
                   {chosen.length === 0
@@ -385,7 +385,7 @@ export default function BookingPage() {
           <p className="mb-4 text-sm text-plum-500">
             {service.name}
             {chosen.length > 0 && <> + {chosen.map((a) => a.name).join(" + ")}</>} ·{" "}
-            {totalMinutes} דק' · {total && priceLabel(total.lo, total.hi)}
+            {durationLabel(totalMinutes)} · {total && priceLabel(total.lo, total.hi)}
           </p>
 
           {availability === null ? (
