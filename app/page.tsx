@@ -185,7 +185,12 @@ export default function BookingPage() {
             👤 האזור האישי שלי
           </Link>
         </div>
-        <p className="text-xs text-plum-500/60">שינוי וביטול תור – עד 24 שעות לפני</p>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-xs text-plum-500/60">שינוי וביטול תור – עד 24 שעות לפני</p>
+          <Link href="/admin" className="text-[10px] text-plum-500/40">
+            כניסת מנהלת
+          </Link>
+        </div>
       </main>
     );
   }
