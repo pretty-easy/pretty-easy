@@ -13,10 +13,27 @@ function toDateStr(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+function dayLabel(d: Date) {
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  if (d.toDateString() === today.toDateString()) return "היום";
+  if (d.toDateString() === tomorrow.toDateString()) return "מחר";
+  return DAY_NAMES[d.getDay()];
+}
+
+function slotGroup(label: string) {
+  const h = parseInt(label.slice(0, 2), 10);
+  if (h < 12) return "בוקר ☀️";
+  if (h < 16) return "צהריים 🌤";
+  return "אחה״צ וערב 🌙";
+}
+
 export default function BookingPage() {
   const [step, setStep] = useState(1);
   const [services, setServices] = useState<Service[]>([]);
   const [service, setService] = useState<Service | null>(null);
+  const [availability, setAvailability] = useState<Record<string, number> | null>(null);
   const [dateStr, setDateStr] = useState<string>("");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -33,7 +50,6 @@ export default function BookingPage() {
     for (let i = 0; i < 21; i++) {
       const d = new Date();
       d.setDate(d.getDate() + i);
-      if (d.getDay() === 6) continue; // שבת
       out.push({ date: d, str: toDateStr(d) });
     }
     return out;
@@ -46,6 +62,28 @@ export default function BookingPage() {
       .order("price", { ascending: false })
       .then(({ data }) => setServices((data as Service[]) ?? []));
   }, []);
+
+  // אילו ימים בכלל פנויים – ובחירה אוטומטית של היום הפנוי הראשון
+  useEffect(() => {
+    if (!service) return;
+    setAvailability(null);
+    setDateStr("");
+    supabase
+      .rpc("get_available_dates", {
+        p_service_id: service.id,
+        p_from: toDateStr(new Date()),
+        p_days: 21,
+      })
+      .then(({ data }) => {
+        const map: Record<string, number> = {};
+        (data as { day: string; free_count: number }[] | null)?.forEach(
+          (r) => (map[r.day] = Number(r.free_count))
+        );
+        setAvailability(map);
+        const firstFree = days.find((d) => (map[d.str] ?? 0) > 0);
+        if (firstFree) setDateStr(firstFree.str);
+      });
+  }, [service, days]);
 
   useEffect(() => {
     if (!service || !dateStr) return;
@@ -73,7 +111,6 @@ export default function BookingPage() {
     setSubmitting(false);
     if (error) {
       setError(error.message);
-      // אם המשבצת נתפסה – רענון המשבצות
       if (error.message.includes("פנוי")) {
         const { data: fresh } = await supabase.rpc("get_available_slots", {
           p_service_id: service.id,
@@ -90,15 +127,23 @@ export default function BookingPage() {
   }
 
   const selectedDay = days.find((d) => d.str === dateStr);
+  const grouped = useMemo(() => {
+    const g: Record<string, Slot[]> = {};
+    slots.forEach((s) => {
+      const k = slotGroup(s.label);
+      (g[k] ??= []).push(s);
+    });
+    return g;
+  }, [slots]);
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16">
-      <header className="flex flex-col items-center pt-8 pb-6">
-        <Image src="/logo.png" alt="Pretty Easy" width={220} height={66} priority />
+    <main className="mx-auto max-w-md px-4 pb-8">
+      <header className="flex flex-col items-center pt-6 pb-4">
+        <Image src="/logo.png" alt="Pretty Easy" width={190} height={57} priority />
       </header>
 
       {step < 4 && (
-        <div className="mb-6 flex items-center justify-center gap-2">
+        <div className="mb-5 flex items-center justify-center gap-2">
           {[1, 2, 3].map((s) => (
             <div
               key={s}
@@ -121,10 +166,10 @@ export default function BookingPage() {
                   setService(s);
                   setStep(2);
                 }}
-                className="card flex items-center justify-between text-right transition hover:ring-2 hover:ring-blush-300"
+                className="card flex min-h-[72px] items-center justify-between text-right transition active:scale-[0.99] hover:ring-2 hover:ring-blush-300"
               >
                 <div>
-                  <div className="font-semibold">{s.name}</div>
+                  <div className="text-base font-semibold">{s.name}</div>
                   <div className="text-sm text-plum-500">{s.duration_minutes} דקות</div>
                 </div>
                 <div className="text-lg font-bold text-blush-600">₪{Number(s.price)}</div>
@@ -138,8 +183,8 @@ export default function BookingPage() {
       )}
 
       {step === 2 && service && (
-        <section>
-          <button className="btn-ghost mb-2 text-sm" onClick={() => setStep(1)}>
+        <section className="pb-24">
+          <button className="btn-ghost mb-1 text-sm" onClick={() => setStep(1)}>
             → חזרה לטיפולים
           </button>
           <h1 className="mb-1 text-xl font-bold">מתי נוח לך?</h1>
@@ -147,63 +192,103 @@ export default function BookingPage() {
             {service.name} · {service.duration_minutes} דק' · ₪{Number(service.price)}
           </p>
 
-          <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-2">
-            {days.map((d) => (
-              <button
-                key={d.str}
-                onClick={() => setDateStr(d.str)}
-                className={`flex min-w-[64px] flex-col items-center rounded-2xl border px-3 py-2 transition ${
-                  dateStr === d.str
-                    ? "border-plum-700 bg-plum-700 text-white"
-                    : "border-blush-200 bg-white"
-                }`}
-              >
-                <span className="text-xs">{DAY_NAMES[d.date.getDay()]}</span>
-                <span className="text-lg font-bold">{d.date.getDate()}</span>
-                <span className="text-xs">
-                  {d.date.toLocaleDateString("he-IL", { month: "short" })}
-                </span>
-              </button>
-            ))}
-          </div>
+          {availability === null ? (
+            <p className="text-plum-500">בודק ימים פנויים…</p>
+          ) : (
+            <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-2">
+              {days.map((d) => {
+                const free = availability[d.str] ?? 0;
+                const disabled = free === 0;
+                return (
+                  <button
+                    key={d.str}
+                    disabled={disabled}
+                    onClick={() => setDateStr(d.str)}
+                    className={`flex min-w-[72px] flex-col items-center rounded-2xl border px-3 py-2.5 transition ${
+                      dateStr === d.str
+                        ? "border-plum-700 bg-plum-700 text-white shadow-md"
+                        : disabled
+                        ? "border-transparent bg-blush-50 text-plum-500/30"
+                        : "border-blush-200 bg-white active:scale-95"
+                    }`}
+                  >
+                    <span className="text-xs font-medium">{dayLabel(d.date)}</span>
+                    <span className="text-xl font-bold leading-tight">{d.date.getDate()}</span>
+                    <span className="text-[11px]">
+                      {d.date.toLocaleDateString("he-IL", { month: "short" })}
+                    </span>
+                    {!disabled && dateStr !== d.str && (
+                      <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-blush-400" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {dateStr && (
             <>
-              <h2 className="mb-3 font-semibold">שעות פנויות</h2>
               {slotsLoading ? (
-                <p className="text-plum-500">בודק זמינות…</p>
+                <p className="text-plum-500">בודק שעות…</p>
               ) : slots.length === 0 ? (
                 <p className="rounded-xl bg-blush-100 p-4 text-sm">
                   אין שעות פנויות ביום זה 😕 נסי יום אחר
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-2">
-                  {slots.map((sl) => (
-                    <button
-                      key={sl.slot_start}
-                      onClick={() => setSlot(sl)}
-                      className={`chip ${slot?.slot_start === sl.slot_start ? "chip-active" : ""}`}
-                    >
-                      {sl.label}
-                    </button>
-                  ))}
-                </div>
+                Object.entries(grouped).map(([group, groupSlots]) => (
+                  <div key={group} className="mb-4">
+                    <h3 className="mb-2 text-sm font-semibold text-plum-500">{group}</h3>
+                    <div className="grid grid-cols-4 gap-2">
+                      {groupSlots.map((sl) => (
+                        <button
+                          key={sl.slot_start}
+                          onClick={() => setSlot(sl)}
+                          className={`rounded-xl border py-3 text-center text-base font-medium transition active:scale-95 ${
+                            slot?.slot_start === sl.slot_start
+                              ? "border-plum-700 bg-plum-700 text-white shadow-md"
+                              : "border-blush-200 bg-white"
+                          }`}
+                        >
+                          {sl.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))
               )}
+            </>
+          )}
+
+          {/* פס המשך צף תחתון */}
+          <div className="fixed inset-x-0 bottom-0 border-t border-blush-100 bg-white/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
+            <div className="mx-auto flex max-w-md items-center gap-3">
+              <div className="flex-1 text-sm">
+                {slot && selectedDay ? (
+                  <>
+                    <div className="font-semibold">
+                      {dayLabel(selectedDay.date)} · {slot.label}
+                    </div>
+                    <div className="text-plum-500">{service.name}</div>
+                  </>
+                ) : (
+                  <span className="text-plum-500">בחרי שעה כדי להמשיך</span>
+                )}
+              </div>
               <button
-                className="btn-primary mt-6 w-full"
+                className="btn-primary min-w-[112px]"
                 disabled={!slot}
                 onClick={() => setStep(3)}
               >
                 המשך
               </button>
-            </>
-          )}
+            </div>
+          </div>
         </section>
       )}
 
       {step === 3 && service && slot && selectedDay && (
         <section>
-          <button className="btn-ghost mb-2 text-sm" onClick={() => setStep(2)}>
+          <button className="btn-ghost mb-1 text-sm" onClick={() => setStep(2)}>
             → חזרה לבחירת מועד
           </button>
           <h1 className="mb-4 text-xl font-bold">כמעט סיימנו ✨</h1>
@@ -230,6 +315,7 @@ export default function BookingPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                autoComplete="name"
                 placeholder="השם שלך"
               />
             </div>
@@ -238,9 +324,11 @@ export default function BookingPage() {
               <input
                 className="input"
                 type="tel"
+                inputMode="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 required
+                autoComplete="tel"
                 placeholder="050-1234567"
                 dir="ltr"
                 style={{ textAlign: "right" }}

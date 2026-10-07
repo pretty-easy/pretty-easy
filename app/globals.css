@@ -4,6 +4,13 @@
 
 body {
   @apply bg-cream text-plum-900 font-heebo;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* מונע זום אוטומטי של iOS בפוקוס על שדות */
+input, select, textarea {
+  font-size: 16px;
+  font-family: inherit;
 }
 
 @layer components {

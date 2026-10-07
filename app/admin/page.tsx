@@ -244,6 +244,9 @@ function ServicesTab() {
   const [name, setName] = useState("");
   const [duration, setDuration] = useState(60);
   const [price, setPrice] = useState(120);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [edit, setEdit] = useState({ name: "", duration: 60, price: 0 });
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("services").select("*").order("created_at");
@@ -265,6 +268,22 @@ function ServicesTab() {
 
   async function toggle(s: Service) {
     await supabase.from("services").update({ is_active: !s.is_active }).eq("id", s.id);
+    load();
+  }
+
+  function startEdit(s: Service) {
+    setEditingId(s.id);
+    setEdit({ name: s.name, duration: s.duration_minutes, price: Number(s.price) });
+  }
+
+  async function saveEdit(id: string) {
+    setSaving(true);
+    await supabase
+      .from("services")
+      .update({ name: edit.name, duration_minutes: edit.duration, price: edit.price })
+      .eq("id", id);
+    setSaving(false);
+    setEditingId(null);
     load();
   }
 
@@ -305,19 +324,80 @@ function ServicesTab() {
         <button className="btn-primary">הוספה</button>
       </form>
 
-      {services.map((s) => (
-        <div key={s.id} className={`card flex items-center justify-between ${!s.is_active ? "opacity-50" : ""}`}>
-          <div>
-            <div className="font-semibold">{s.name}</div>
-            <div className="text-sm text-plum-500">
-              {s.duration_minutes} דק' · ₪{Number(s.price)}
+      {services.map((s) =>
+        editingId === s.id ? (
+          <form
+            key={s.id}
+            className="card flex flex-col gap-3 ring-2 ring-blush-300"
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveEdit(s.id);
+            }}
+          >
+            <input
+              className="input"
+              value={edit.name}
+              onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+              required
+            />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="label">משך (דקות)</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={5}
+                  step={5}
+                  value={edit.duration}
+                  onChange={(e) => setEdit({ ...edit, duration: +e.target.value })}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="label">מחיר (₪)</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  value={edit.price}
+                  onChange={(e) => setEdit({ ...edit, price: +e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn-primary flex-1" disabled={saving}>
+                {saving ? "שומרת…" : "שמירה"}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setEditingId(null)}
+              >
+                ביטול
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div
+            key={s.id}
+            className={`card flex items-center justify-between ${!s.is_active ? "opacity-50" : ""}`}
+          >
+            <div>
+              <div className="font-semibold">{s.name}</div>
+              <div className="text-sm text-plum-500">
+                {s.duration_minutes} דק' · ₪{Number(s.price)}
+              </div>
+            </div>
+            <div className="flex gap-1">
+              <button className="btn-ghost text-sm" onClick={() => startEdit(s)}>
+                עריכה ✏️
+              </button>
+              <button className="btn-ghost text-sm" onClick={() => toggle(s)}>
+                {s.is_active ? "השבתה" : "הפעלה"}
+              </button>
             </div>
           </div>
-          <button className="btn-ghost text-sm" onClick={() => toggle(s)}>
-            {s.is_active ? "השבתה" : "הפעלה"}
-          </button>
-        </div>
-      ))}
+        )
+      )}
     </section>
   );
 }
