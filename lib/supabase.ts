@@ -45,6 +45,13 @@ export function durationLabel(min: number) {
   return `${hours} ו-${r} דק'`;
 }
 
+// קישור וואטסאפ: 050-1234567 → https://wa.me/972501234567
+export function waLink(phone: string, text?: string) {
+  const digits = phone.replace(/\D/g, "");
+  const intl = digits.startsWith("0") ? "972" + digits.slice(1) : digits;
+  return `https://wa.me/${intl}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
+}
+
 // "₪120" או "₪120–180"
 export function priceLabel(min: number, max?: number | null) {
   const lo = Number(min);

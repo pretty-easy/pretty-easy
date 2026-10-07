@@ -13,6 +13,7 @@ import {
   Addon,
   priceLabel,
   durationLabel,
+  waLink,
 } from "@/lib/supabase";
 import { subscribeAdminPush, pushResultMessage } from "@/lib/push";
 
@@ -574,9 +575,22 @@ function CalendarTab() {
                 תוספות: {sel.addons.map((x) => `${x.name} (${priceLabel(x.price, x.price_max)})`).join(", ")}
               </p>
             )}
-            <a href={`tel:${sel.client_phone}`} className="text-sm text-blush-600" dir="ltr">
-              {sel.client_phone} 📞
-            </a>
+            <div className="mt-1 flex items-center gap-3 text-sm">
+              <a href={`tel:${sel.client_phone}`} className="text-blush-600" dir="ltr">
+                {sel.client_phone} 📞
+              </a>
+              <a
+                href={waLink(
+                  sel.client_phone,
+                  `היי ${sel.client_name} 💅 לגבי התור שלך ל${sel.services?.name ?? ""} ב${new Date(sel.starts_at).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "numeric" })} בשעה ${fmtTime(sel.starts_at)} – `
+                )}
+                target="_blank"
+                rel="noopener"
+                className="rounded-full bg-green-500 px-3 py-1 text-xs font-medium text-white"
+              >
+                וואטסאפ
+              </a>
+            </div>
             {sel.notes && <p className="mt-2 rounded-xl bg-blush-50 p-2 text-sm">📝 {sel.notes}</p>}
             {resOpen && (
               <div className="mt-4 rounded-xl border border-blush-200 p-3">
@@ -1340,12 +1354,22 @@ function ClientsTab() {
               הצטרפה {new Date(c.created_at).toLocaleDateString("he-IL")}
             </div>
           </div>
-          <button
-            className="btn-ghost shrink-0 text-xs text-red-700"
-            onClick={() => removeClient(c)}
-          >
-            מחיקה
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <a
+              href={waLink(c.phone, `היי ${c.name} 💅`)}
+              target="_blank"
+              rel="noopener"
+              className="rounded-full bg-green-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-green-400"
+            >
+              וואטסאפ
+            </a>
+            <button
+              className="btn-ghost text-xs text-red-700"
+              onClick={() => removeClient(c)}
+            >
+              מחיקה
+            </button>
+          </div>
         </div>
       ))}
       {filtered.length === 0 && <p className="text-center text-sm text-plum-500">אין לקוחות עדיין</p>}
