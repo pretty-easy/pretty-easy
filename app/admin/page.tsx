@@ -239,11 +239,11 @@ function CalendarTab() {
   }
 
   useEffect(() => {
-    if (!resOpen || !resDate || !sel?.cancel_token) return;
+    if (!resOpen || !resDate || !sel) return;
     setResLoading(true);
     setResSlot(null);
     supabase
-      .rpc("get_reschedule_slots", { p_token: sel.cancel_token, p_date: resDate })
+      .rpc("admin_reschedule_slots", { p_id: sel.id, p_date: resDate })
       .then(({ data }) => {
         setResSlots((data as { slot_start: string; label: string }[]) ?? []);
         setResLoading(false);
@@ -1090,6 +1090,7 @@ function HoursTab() {
     Array.from({ length: 7 }, () => ({ enabled: false, start: "09:00", end: "19:00" }))
   );
   const [buffer, setBuffer] = useState(0);
+  const [leadHours, setLeadHours] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -1110,10 +1111,14 @@ function HoursTab() {
       });
     supabase
       .from("app_settings")
-      .select("value")
-      .eq("key", "buffer_minutes")
-      .single()
-      .then(({ data }) => setBuffer(Number((data as { value: string } | null)?.value ?? 0)));
+      .select("key, value")
+      .in("key", ["buffer_minutes", "min_lead_hours"])
+      .then(({ data }) => {
+        (data as { key: string; value: string }[] | null)?.forEach((r) => {
+          if (r.key === "buffer_minutes") setBuffer(Number(r.value) || 0);
+          if (r.key === "min_lead_hours") setLeadHours(Number(r.value) || 0);
+        });
+      });
   }, []);
 
   async function save() {
@@ -1124,9 +1129,13 @@ function HoursTab() {
       .filter((r) => r.enabled)
       .map(({ enabled, ...rest }) => rest);
     if (inserts.length) await supabase.from("working_hours").insert(inserts);
-    await supabase
-      .from("app_settings")
-      .upsert({ key: "buffer_minutes", value: String(buffer) }, { onConflict: "key" });
+    await supabase.from("app_settings").upsert(
+      [
+        { key: "buffer_minutes", value: String(buffer) },
+        { key: "min_lead_hours", value: String(leadHours) },
+      ],
+      { onConflict: "key" }
+    );
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -1182,6 +1191,24 @@ function HoursTab() {
           />
           <span className="text-xs text-plum-500">
             זמן התארגנות בין לקוחה ללקוחה – משפיע על השעות שמוצעות
+          </span>
+        </div>
+      </div>
+      <div className="border-t border-blush-100 pt-3">
+        <label className="label">📅 זמן מינימום מראש לקביעת תור (שעות)</label>
+        <div className="flex items-center gap-3">
+          <input
+            className="input !w-24"
+            type="number"
+            min={0}
+            max={168}
+            step={1}
+            value={leadHours}
+            onChange={(e) => setLeadHours(Math.max(0, +e.target.value))}
+          />
+          <span className="text-xs text-plum-500">
+            למשל 8 = לקוחה לא תוכל לקבוע תור שמתחיל בעוד פחות מ-8 שעות. 0 = בלי מגבלה.
+            לא חל עלייך בהזזת תורים מהיומן.
           </span>
         </div>
       </div>

@@ -1,0 +1,4 @@
+-- 0007: דגל was_pending בטריגר notify_status_change (פוש "לא אושר" מול "בוטל")
+-- 0008: app_settings.min_lead_hours; _available_slots3 עם זמן־מראש;
+--       _available_slots2 קוראת את ההגדרה; admin_reschedule_slots + admin_reschedule_appointment בלי המגבלה
+-- *** כבר הוחלו על ה-DB ע"י Claude – לתיעוד בלבד ***
