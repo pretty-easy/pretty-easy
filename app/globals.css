@@ -13,6 +13,18 @@ input, select, textarea {
   font-family: inherit;
 }
 
+/* שדות תאריך/שעה במובייל: בלי רוחב פנימי שגולש מהכרטיס */
+input[type="datetime-local"],
+input[type="date"],
+input[type="time"] {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+}
+
 @layer components {
   .btn-primary {
     @apply bg-plum-700 text-white rounded-full px-6 py-3 font-medium shadow-sm

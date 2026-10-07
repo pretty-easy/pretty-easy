@@ -1,0 +1,5 @@
+-- 0005: מרווח מינימום בין תורים + הזזת תור ע"י האדמין
+-- *** כבר הוחלה על ה-DB ע"י Claude – לתיעוד בלבד ***
+-- app_settings (buffer_minutes); _available_slots מרחיבה תורים קיימים במרווח;
+-- admin_reschedule_appointment(id, slot): ללא מגבלת 24ש, מאשרת, ושולחת פוש
+-- "עדכון לתור שלך 📅" ללקוחה (authenticated בלבד).

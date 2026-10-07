@@ -164,6 +164,13 @@ function CalendarTab() {
   const [grid, setGrid] = useState({ start: 8, end: 20 });
   const [sel, setSel] = useState<Appointment | null>(null);
   const [busy, setBusy] = useState(false);
+  // הזזת תור ע"י האדמין
+  const [resOpen, setResOpen] = useState(false);
+  const [resDate, setResDate] = useState("");
+  const [resSlots, setResSlots] = useState<{ slot_start: string; label: string }[]>([]);
+  const [resSlot, setResSlot] = useState<string | null>(null);
+  const [resLoading, setResLoading] = useState(false);
+  const [resError, setResError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const end = new Date(weekStart);
@@ -215,7 +222,44 @@ function CalendarTab() {
     setBusy(true);
     await supabase.from("appointments").update({ status }).eq("id", id);
     setBusy(false);
+    closeModal();
+    load();
+  }
+
+  function closeModal() {
     setSel(null);
+    setResOpen(false);
+    setResDate("");
+    setResSlot(null);
+    setResError(null);
+  }
+
+  useEffect(() => {
+    if (!resOpen || !resDate || !sel?.cancel_token) return;
+    setResLoading(true);
+    setResSlot(null);
+    supabase
+      .rpc("get_reschedule_slots", { p_token: sel.cancel_token, p_date: resDate })
+      .then(({ data }) => {
+        setResSlots((data as { slot_start: string; label: string }[]) ?? []);
+        setResLoading(false);
+      });
+  }, [resOpen, resDate, sel]);
+
+  async function adminMove() {
+    if (!sel || !resSlot) return;
+    setBusy(true);
+    setResError(null);
+    const { error } = await supabase.rpc("admin_reschedule_appointment", {
+      p_id: sel.id,
+      p_new_slot: resSlot,
+    });
+    setBusy(false);
+    if (error) {
+      setResError(error.message);
+      return;
+    }
+    closeModal();
     load();
   }
 
@@ -488,7 +532,7 @@ function CalendarTab() {
       {sel && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
-          onClick={() => setSel(null)}
+          onClick={closeModal}
         >
           <div
             className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl"
@@ -519,7 +563,66 @@ function CalendarTab() {
               {sel.client_phone} 📞
             </a>
             {sel.notes && <p className="mt-2 rounded-xl bg-blush-50 p-2 text-sm">📝 {sel.notes}</p>}
-            <div className="mt-4 flex gap-2">
+            {resOpen && (
+              <div className="mt-4 rounded-xl border border-blush-200 p-3">
+                <h4 className="mb-2 text-sm font-bold">בחרי מועד חדש</h4>
+                <div className="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1">
+                  {Array.from({ length: 21 }, (_, i) => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + i);
+                    const str = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                    return (
+                      <button
+                        key={str}
+                        onClick={() => setResDate(str)}
+                        className={`flex min-w-[54px] flex-col items-center rounded-xl border px-2 py-1.5 text-xs ${
+                          resDate === str
+                            ? "border-plum-700 bg-plum-700 text-white"
+                            : "border-blush-200 bg-white"
+                        }`}
+                      >
+                        <span>{DAY_NAMES[d.getDay()].slice(0, 3)}'</span>
+                        <span className="text-sm font-bold">{d.getDate()}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {resDate &&
+                  (resLoading ? (
+                    <p className="text-xs text-plum-500">בודק שעות…</p>
+                  ) : resSlots.length === 0 ? (
+                    <p className="rounded-lg bg-blush-50 p-2 text-xs">אין שעות פנויות ביום זה</p>
+                  ) : (
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {resSlots.map((s) => (
+                        <button
+                          key={s.slot_start}
+                          onClick={() => setResSlot(s.slot_start)}
+                          className={`rounded-lg border py-1.5 text-xs font-medium ${
+                            resSlot === s.slot_start
+                              ? "border-plum-700 bg-plum-700 text-white"
+                              : "border-blush-200 bg-white"
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                {resError && (
+                  <p className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{resError}</p>
+                )}
+                <button
+                  className="btn-primary mt-3 w-full !py-2 text-sm"
+                  disabled={!resSlot || busy}
+                  onClick={adminMove}
+                >
+                  {busy ? "מעדכנת…" : "אישור המועד החדש (הלקוחה תעודכן)"}
+                </button>
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2">
               {sel.status === "pending" && (
                 <button
                   className="btn-primary flex-1 !bg-green-600 hover:!bg-green-500"
@@ -530,13 +633,19 @@ function CalendarTab() {
                 </button>
               )}
               <button
+                className="btn-ghost border border-blush-200"
+                onClick={() => setResOpen((v) => !v)}
+              >
+                🗓 שינוי מועד
+              </button>
+              <button
                 className="btn-ghost border border-red-200 text-red-700"
                 disabled={busy}
                 onClick={() => setStatus(sel.id, "cancelled")}
               >
                 ביטול התור
               </button>
-              <button className="btn-ghost" onClick={() => setSel(null)}>
+              <button className="btn-ghost" onClick={closeModal}>
                 סגירה
               </button>
             </div>
@@ -736,6 +845,7 @@ function HoursTab() {
   const [rows, setRows] = useState<DayRow[]>(
     Array.from({ length: 7 }, () => ({ enabled: false, start: "09:00", end: "19:00" }))
   );
+  const [buffer, setBuffer] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -754,6 +864,12 @@ function HoursTab() {
           })
         );
       });
+    supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "buffer_minutes")
+      .single()
+      .then(({ data }) => setBuffer(Number((data as { value: string } | null)?.value ?? 0)));
   }, []);
 
   async function save() {
@@ -764,6 +880,9 @@ function HoursTab() {
       .filter((r) => r.enabled)
       .map(({ enabled, ...rest }) => rest);
     if (inserts.length) await supabase.from("working_hours").insert(inserts);
+    await supabase
+      .from("app_settings")
+      .upsert({ key: "buffer_minutes", value: String(buffer) }, { onConflict: "key" });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -805,6 +924,23 @@ function HoursTab() {
           />
         </div>
       ))}
+      <div className="mt-2 border-t border-blush-100 pt-3">
+        <label className="label">⏱ מרווח מינימום בין תורים (דקות)</label>
+        <div className="flex items-center gap-3">
+          <input
+            className="input !w-24"
+            type="number"
+            min={0}
+            max={120}
+            step={5}
+            value={buffer}
+            onChange={(e) => setBuffer(Math.max(0, +e.target.value))}
+          />
+          <span className="text-xs text-plum-500">
+            זמן התארגנות בין לקוחה ללקוחה – משפיע על השעות שמוצעות
+          </span>
+        </div>
+      </div>
       <button className="btn-primary mt-2" onClick={save} disabled={saving}>
         {saving ? "שומרת…" : saved ? "נשמר ✓" : "שמירה"}
       </button>
@@ -892,13 +1028,23 @@ function ClientsTab() {
   const [clients, setClients] = useState<Client[]>([]);
   const [q, setQ] = useState("");
 
-  useEffect(() => {
+  const load = useCallback(() => {
     supabase
       .from("clients")
       .select("*")
       .order("created_at", { ascending: false })
       .then(({ data }) => setClients((data as Client[]) ?? []));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function removeClient(c: Client) {
+    if (!confirm(`למחוק את ${c.name} מרשימת הלקוחות?\n(התורים שלה ביומן יישארו)`)) return;
+    await supabase.from("clients").delete().eq("id", c.id);
+    load();
+  }
 
   const filtered = clients.filter(
     (c) => c.name.includes(q) || c.phone.includes(q)
@@ -913,16 +1059,22 @@ function ClientsTab() {
         onChange={(e) => setQ(e.target.value)}
       />
       {filtered.map((c) => (
-        <div key={c.id} className="card flex items-center justify-between text-sm">
-          <div>
+        <div key={c.id} className="card flex items-center justify-between gap-2 text-sm">
+          <div className="min-w-0">
             <div className="font-semibold">{c.name}</div>
             <a href={`tel:${c.phone}`} className="text-blush-600" dir="ltr">
               {c.phone}
             </a>
+            <div className="text-xs text-plum-500">
+              הצטרפה {new Date(c.created_at).toLocaleDateString("he-IL")}
+            </div>
           </div>
-          <span className="text-xs text-plum-500">
-            הצטרפה {new Date(c.created_at).toLocaleDateString("he-IL")}
-          </span>
+          <button
+            className="btn-ghost shrink-0 text-xs text-red-700"
+            onClick={() => removeClient(c)}
+          >
+            מחיקה
+          </button>
         </div>
       ))}
       {filtered.length === 0 && <p className="text-center text-sm text-plum-500">אין לקוחות עדיין</p>}
