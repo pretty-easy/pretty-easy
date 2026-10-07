@@ -137,31 +137,85 @@ function Dashboard() {
   );
 }
 
-/* ===== יומן ===== */
+/* ===== יומן (בסגנון Google Calendar) ===== */
+
+const HOUR_PX = 56;
+
+function hourOf(iso: string) {
+  const d = new Date(iso);
+  return d.getHours() + d.getMinutes() / 60;
+}
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+}
 
 function CalendarTab() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [view, setView] = useState<"day" | "week">("day");
   const [appts, setAppts] = useState<Appointment[]>([]);
+  const [blocks, setBlocks] = useState<BlockedTime[]>([]);
+  const [pending, setPending] = useState<Appointment[]>([]);
+  const [grid, setGrid] = useState({ start: 8, end: 20 });
+  const [sel, setSel] = useState<Appointment | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     const end = new Date(weekStart);
     end.setDate(end.getDate() + 7);
-    const { data } = await supabase
-      .from("appointments")
-      .select("*, services(name)")
-      .gte("starts_at", weekStart.toISOString())
-      .lt("starts_at", end.toISOString())
-      .order("starts_at");
-    setAppts((data as Appointment[]) ?? []);
+    const [a, b, p] = await Promise.all([
+      supabase
+        .from("appointments")
+        .select("*, services(name)")
+        .gte("starts_at", weekStart.toISOString())
+        .lt("starts_at", end.toISOString())
+        .neq("status", "cancelled")
+        .order("starts_at"),
+      supabase
+        .from("blocked_times")
+        .select("*")
+        .lt("starts_at", end.toISOString())
+        .gt("ends_at", weekStart.toISOString()),
+      supabase
+        .from("appointments")
+        .select("*, services(name)")
+        .eq("status", "pending")
+        .gte("starts_at", new Date().toISOString())
+        .order("starts_at"),
+    ]);
+    setAppts((a.data as Appointment[]) ?? []);
+    setBlocks((b.data as BlockedTime[]) ?? []);
+    setPending((p.data as Appointment[]) ?? []);
   }, [weekStart]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  async function cancelAppt(id: string) {
-    if (!confirm("לבטל את התור?")) return;
-    await supabase.from("appointments").update({ status: "cancelled" }).eq("id", id);
+  useEffect(() => {
+    supabase.from("working_hours").select("*").then(({ data }) => {
+      const whs = (data as WorkingHour[]) ?? [];
+      if (whs.length) {
+        const start = Math.min(...whs.map((w) => parseInt(w.start_time, 10)));
+        const end = Math.max(
+          ...whs.map((w) => parseInt(w.end_time, 10) + (w.end_time.slice(3, 5) !== "00" ? 1 : 0))
+        );
+        setGrid({ start: Math.max(0, start - 1), end: Math.min(23, end + 1) });
+      }
+    });
+  }, []);
+
+  async function setStatus(id: string, status: "confirmed" | "cancelled") {
+    if (status === "cancelled" && !confirm("לבטל את התור? הלקוחה תקבל עדכון")) return;
+    setBusy(true);
+    await supabase.from("appointments").update({ status }).eq("id", id);
+    setBusy(false);
+    setSel(null);
     load();
   }
 
@@ -170,86 +224,325 @@ function CalendarTab() {
     d.setDate(d.getDate() + i);
     return d;
   });
+  const visDays = view === "day" ? [selectedDay] : days;
+  const gridHours = Array.from({ length: grid.end - grid.start }, (_, i) => grid.start + i);
+  const now = new Date();
+
+  function moveWeek(dir: number) {
+    const w = new Date(weekStart.getTime() + dir * 7 * 864e5);
+    setWeekStart(w);
+    const d = new Date(selectedDay.getTime() + dir * 7 * 864e5);
+    setSelectedDay(d);
+  }
 
   return (
     <section>
-      <div className="mb-4 flex items-center justify-between">
-        <button
-          className="btn-ghost"
-          onClick={() => setWeekStart((w) => new Date(w.getTime() - 7 * 864e5))}
-        >
-          ‹ שבוע קודם
+      {/* ממתינים לאישור */}
+      {pending.length > 0 && (
+        <div className="mb-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+          <h3 className="mb-2 font-bold text-amber-900">
+            ⏳ {pending.length} {pending.length === 1 ? "תור ממתין" : "תורים ממתינים"} לאישור
+          </h3>
+          <div className="flex flex-col gap-2">
+            {pending.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center justify-between gap-2 rounded-xl bg-white p-3 text-sm"
+              >
+                <div className="min-w-0">
+                  <div className="font-semibold">
+                    {a.client_name} · {a.services?.name}
+                  </div>
+                  <div className="text-xs text-plum-500">
+                    יום {DAY_NAMES[new Date(a.starts_at).getDay()]}{" "}
+                    {new Date(a.starts_at).toLocaleDateString("he-IL")} · {fmtTime(a.starts_at)}
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    className="rounded-full bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-green-500"
+                    disabled={busy}
+                    onClick={() => setStatus(a.id, "confirmed")}
+                  >
+                    ✓ אישור
+                  </button>
+                  <button
+                    className="btn-ghost !px-2 text-xs text-red-700"
+                    disabled={busy}
+                    onClick={() => setStatus(a.id, "cancelled")}
+                  >
+                    דחייה
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ניווט */}
+      <div className="mb-2 flex items-center justify-between">
+        <button className="btn-ghost !px-3" onClick={() => moveWeek(-1)}>
+          ‹
         </button>
-        <span className="text-sm font-medium">
-          {weekStart.toLocaleDateString("he-IL")} –{" "}
-          {days[6].toLocaleDateString("he-IL")}
-        </span>
-        <button
-          className="btn-ghost"
-          onClick={() => setWeekStart((w) => new Date(w.getTime() + 7 * 864e5))}
-        >
-          שבוע הבא ›
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">
+            {days[0].toLocaleDateString("he-IL", { day: "numeric", month: "short" })} –{" "}
+            {days[6].toLocaleDateString("he-IL", { day: "numeric", month: "short" })}
+          </span>
+          <button
+            className="btn-ghost !py-1 text-xs"
+            onClick={() => {
+              const t = new Date();
+              t.setHours(0, 0, 0, 0);
+              setSelectedDay(t);
+              setWeekStart(startOfWeek(t));
+            }}
+          >
+            היום
+          </button>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="flex rounded-full border border-blush-200 p-0.5 text-xs">
+            <button
+              className={`rounded-full px-3 py-1 ${view === "day" ? "bg-plum-700 text-white" : ""}`}
+              onClick={() => setView("day")}
+            >
+              יום
+            </button>
+            <button
+              className={`rounded-full px-3 py-1 ${view === "week" ? "bg-plum-700 text-white" : ""}`}
+              onClick={() => setView("week")}
+            >
+              שבוע
+            </button>
+          </div>
+          <button className="btn-ghost !px-3" onClick={() => moveWeek(1)}>
+            ›
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {days.map((d) => {
-          const dayAppts = appts.filter(
-            (a) => new Date(a.starts_at).toDateString() === d.toDateString()
-          );
-          const isToday = d.toDateString() === new Date().toDateString();
-          return (
-            <div key={d.toISOString()} className="card">
-              <h3 className={`mb-2 font-bold ${isToday ? "text-blush-600" : ""}`}>
-                יום {DAY_NAMES[d.getDay()]} · {d.toLocaleDateString("he-IL")}
-                {isToday && " (היום)"}
-              </h3>
-              {dayAppts.length === 0 ? (
-                <p className="text-sm text-plum-500">אין תורים</p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {dayAppts.map((a) => (
-                    <li
-                      key={a.id}
-                      className={`flex items-center justify-between rounded-xl p-3 text-sm ${
-                        a.status === "cancelled"
-                          ? "bg-gray-100 text-gray-400 line-through"
-                          : "bg-blush-50"
-                      }`}
-                    >
-                      <div>
-                        <span className="font-bold">
-                          {new Date(a.starts_at).toLocaleTimeString("he-IL", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>{" "}
-                        · {a.services?.name} · {a.client_name}
-                        <a
-                          href={`tel:${a.client_phone}`}
-                          className="mr-2 text-blush-600 no-underline"
-                          dir="ltr"
-                        >
-                          {a.client_phone}
-                        </a>
-                        {a.notes && <div className="text-xs text-plum-500">📝 {a.notes}</div>}
-                      </div>
-                      {a.status !== "cancelled" && (
-                        <button
-                          className="btn-ghost text-xs text-red-700"
-                          onClick={() => cancelAppt(a.id)}
-                        >
-                          ביטול
-                        </button>
-                      )}
-                    </li>
+      {/* פס ימים (בתצוגת יום) */}
+      {view === "day" && (
+        <div className="mb-3 grid grid-cols-7 gap-1">
+          {days.map((d) => {
+            const isSel = d.toDateString() === selectedDay.toDateString();
+            const isToday = d.toDateString() === now.toDateString();
+            const count = appts.filter(
+              (a) => new Date(a.starts_at).toDateString() === d.toDateString()
+            ).length;
+            return (
+              <button
+                key={d.toISOString()}
+                onClick={() => setSelectedDay(new Date(d))}
+                className={`flex flex-col items-center rounded-xl py-1.5 transition ${
+                  isSel ? "bg-plum-700 text-white" : isToday ? "bg-blush-100" : "bg-white"
+                }`}
+              >
+                <span className="text-[10px]">{DAY_NAMES[d.getDay()].slice(0, 3)}'</span>
+                <span className="text-base font-bold leading-tight">{d.getDate()}</span>
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    count > 0 ? (isSel ? "bg-white" : "bg-blush-400") : "bg-transparent"
+                  }`}
+                />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* רשת השעות */}
+      <div className="card overflow-x-auto !p-0">
+        <div className="flex min-w-fit" dir="rtl">
+          {/* עמודת שעות */}
+          <div className="w-12 shrink-0 border-l border-blush-100 text-left">
+            <div className="h-8" />
+            {gridHours.map((h) => (
+              <div key={h} className="relative" style={{ height: HOUR_PX }}>
+                <span className="absolute -top-2 left-1 text-[10px] text-plum-500">
+                  {String(h).padStart(2, "0")}:00
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {visDays.map((d) => {
+            const isToday = d.toDateString() === now.toDateString();
+            const dayAppts = appts.filter(
+              (a) => new Date(a.starts_at).toDateString() === d.toDateString()
+            );
+            const dayBlocks = blocks.filter((b) => {
+              const s = new Date(b.starts_at);
+              const e = new Date(b.ends_at);
+              return s.toDateString() === d.toDateString() || e.toDateString() === d.toDateString();
+            });
+            const nowH = now.getHours() + now.getMinutes() / 60;
+            return (
+              <div
+                key={d.toISOString()}
+                className={`relative border-l border-blush-100 ${
+                  view === "day" ? "flex-1" : "w-[120px] flex-1 sm:w-auto"
+                }`}
+                style={view === "week" ? { minWidth: 104 } : undefined}
+              >
+                <div
+                  className={`flex h-8 items-center justify-center gap-1 border-b border-blush-100 text-xs font-semibold ${
+                    isToday ? "text-blush-600" : ""
+                  }`}
+                >
+                  {view === "week" && (
+                    <>
+                      {DAY_NAMES[d.getDay()].slice(0, 3)}' {d.getDate()}
+                    </>
+                  )}
+                  {view === "day" && (
+                    <>
+                      יום {DAY_NAMES[d.getDay()]} · {d.toLocaleDateString("he-IL")}
+                    </>
+                  )}
+                </div>
+
+                <div className="relative" style={{ height: (grid.end - grid.start) * HOUR_PX }}>
+                  {/* קווי שעה */}
+                  {gridHours.map((h, i) => (
+                    <div
+                      key={h}
+                      className="absolute inset-x-0 border-t border-blush-100/70"
+                      style={{ top: i * HOUR_PX }}
+                    />
                   ))}
-                </ul>
+
+                  {/* חסימות */}
+                  {dayBlocks.map((b) => {
+                    const top = Math.max(0, (hourOf(b.starts_at) - grid.start) * HOUR_PX);
+                    const bottom = Math.min(
+                      (grid.end - grid.start) * HOUR_PX,
+                      (hourOf(b.ends_at) - grid.start) * HOUR_PX
+                    );
+                    if (bottom <= 0 || top >= (grid.end - grid.start) * HOUR_PX) return null;
+                    return (
+                      <div
+                        key={b.id}
+                        className="absolute inset-x-0.5 z-0 rounded-lg text-center text-[10px] text-gray-500"
+                        style={{
+                          top,
+                          height: bottom - top,
+                          background:
+                            "repeating-linear-gradient(45deg,#f1f1f1,#f1f1f1 6px,#e5e5e5 6px,#e5e5e5 12px)",
+                        }}
+                      >
+                        {b.reason && <span className="leading-6">{b.reason}</span>}
+                      </div>
+                    );
+                  })}
+
+                  {/* תורים */}
+                  {dayAppts.map((a) => {
+                    const top = (hourOf(a.starts_at) - grid.start) * HOUR_PX;
+                    const height = Math.max(
+                      24,
+                      (hourOf(a.ends_at) - hourOf(a.starts_at)) * HOUR_PX - 2
+                    );
+                    const isPending = a.status === "pending";
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() => setSel(a)}
+                        className={`absolute inset-x-0.5 z-10 overflow-hidden rounded-lg px-1.5 py-0.5 text-right text-[11px] leading-tight transition active:scale-[0.98] ${
+                          isPending
+                            ? "border-2 border-dashed border-amber-400 bg-amber-50 text-amber-900"
+                            : "bg-plum-700 text-white shadow-sm"
+                        }`}
+                        style={{ top, height }}
+                      >
+                        <div className="truncate font-bold">
+                          {fmtTime(a.starts_at)} {a.client_name}
+                        </div>
+                        <div className="truncate opacity-80">
+                          {a.services?.name}
+                          {isPending && " · ממתין ⏳"}
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {/* קו עכשיו */}
+                  {isToday && nowH > grid.start && nowH < grid.end && (
+                    <div
+                      className="absolute inset-x-0 z-20 h-0.5 bg-red-500"
+                      style={{ top: (nowH - grid.start) * HOUR_PX }}
+                    >
+                      <span className="absolute -top-1 right-0 h-2.5 w-2.5 rounded-full bg-red-500" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* פרטי תור */}
+      {sel && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
+          onClick={() => setSel(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-lg font-bold">{sel.client_name}</h3>
+              {sel.status === "pending" ? (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                  ⏳ ממתין לאישור
+                </span>
+              ) : (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                  ✓ מאושר
+                </span>
               )}
             </div>
-          );
-        })}
-      </div>
+            <p className="text-sm">
+              {sel.services?.name} ·{" "}
+              {new Date(sel.starts_at).toLocaleDateString("he-IL", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}{" "}
+              · {fmtTime(sel.starts_at)}–{fmtTime(sel.ends_at)}
+            </p>
+            <a href={`tel:${sel.client_phone}`} className="text-sm text-blush-600" dir="ltr">
+              {sel.client_phone} 📞
+            </a>
+            {sel.notes && <p className="mt-2 rounded-xl bg-blush-50 p-2 text-sm">📝 {sel.notes}</p>}
+            <div className="mt-4 flex gap-2">
+              {sel.status === "pending" && (
+                <button
+                  className="btn-primary flex-1 !bg-green-600 hover:!bg-green-500"
+                  disabled={busy}
+                  onClick={() => setStatus(sel.id, "confirmed")}
+                >
+                  ✓ אישור התור
+                </button>
+              )}
+              <button
+                className="btn-ghost border border-red-200 text-red-700"
+                disabled={busy}
+                onClick={() => setStatus(sel.id, "cancelled")}
+              >
+                ביטול התור
+              </button>
+              <button className="btn-ghost" onClick={() => setSel(null)}>
+                סגירה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

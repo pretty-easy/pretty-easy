@@ -1,0 +1,5 @@
+-- 0004: זרימת אישור תורים + אזור אישי
+-- *** כבר הוחלה על ה-DB ע"י Claude – לתיעוד בלבד ***
+-- תור חדש נכנס pending; הזזה מחזירה ל-pending + פוש לאדמין;
+-- טריגר notify_status_change: pending→confirmed פוש "אושר" ללקוחה, →cancelled פוש "בוטל";
+-- get_my_appointments(token): כל התורים של הלקוחה לאזור האישי.

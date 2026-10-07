@@ -157,6 +157,15 @@ export default function ManagePage() {
             <p className="mb-1 text-sm text-plum-500">התור שלך:</p>
             <p className="font-semibold">{info.service_name}</p>
             <p className="mb-2 font-semibold">{dateText}</p>
+            <span
+              className={`inline-block rounded-full px-3 py-1 text-xs ${
+                info.status === "pending"
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-green-100 text-green-800"
+              }`}
+            >
+              {info.status === "pending" ? "⏳ ממתין לאישור" : "✓ התור מאושר"}
+            </span>
 
             {info.can_modify && mode === "view" && (
               <div className="mt-4 flex flex-col gap-2">

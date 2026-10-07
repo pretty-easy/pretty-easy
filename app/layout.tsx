@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import PwaSetup from "./pwa";
+import AddToHomeScreen from "./a2hs";
 
 export const metadata: Metadata = {
   title: "Pretty Easy – קביעת תור",
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <PwaSetup />
         {children}
+        <AddToHomeScreen />
       </body>
     </html>
   );

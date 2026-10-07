@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { supabase, Service, Slot } from "@/lib/supabase";
 import { subscribeClientPush, pushResultMessage } from "@/lib/push";
 
@@ -30,9 +31,19 @@ function slotGroup(label: string) {
   return "אחה״צ וערב 🌙";
 }
 
+function rememberToken(t: string) {
+  try {
+    const arr: string[] = JSON.parse(localStorage.getItem("pe_tokens") || "[]");
+    arr.push(t);
+    localStorage.setItem("pe_tokens", JSON.stringify(arr.slice(-20)));
+    localStorage.setItem("pe_last_token", t);
+  } catch {}
+}
+
 export default function BookingPage() {
-  const [step, setStep] = useState(1);
-  const [services, setServices] = useState<Service[]>([]);
+  // 0 = מסך בית, 1 = טיפול, 2 = מועד, 3 = פרטים, 4 = נשלח
+  const [step, setStep] = useState(0);
+  const [services, setServices] = useState<Service[] | null>(null);
   const [service, setService] = useState<Service | null>(null);
   const [availability, setAvailability] = useState<Record<string, number> | null>(null);
   const [dateStr, setDateStr] = useState<string>("");
@@ -60,22 +71,26 @@ export default function BookingPage() {
     supabase
       .from("services")
       .select("*")
-      .eq("is_active", true) // גם כשמחוברים כאדמין – רק טיפולים פעילים
+      .eq("is_active", true)
       .order("price", { ascending: false })
       .then(({ data }) => {
         const list = (data as Service[]) ?? [];
         setServices(list);
-        // טיפול יחיד? מדלגים ישר לבחירת מועד
-        if (list.length === 1) {
-          setService(list[0]);
-          setStep((s) => (s === 1 ? 2 : s));
-        }
+        if (list.length === 1) setService(list[0]);
       });
   }, []);
 
-  // אילו ימים בכלל פנויים – ובחירה אוטומטית של היום הפנוי הראשון
+  function startBooking() {
+    if (services && services.length === 1) {
+      setService(services[0]);
+      setStep(2);
+    } else {
+      setStep(1);
+    }
+  }
+
   useEffect(() => {
-    if (!service) return;
+    if (!service || step < 2) return;
     setAvailability(null);
     setDateStr("");
     supabase
@@ -93,7 +108,8 @@ export default function BookingPage() {
         const firstFree = days.find((d) => (map[d.str] ?? 0) > 0);
         if (firstFree) setDateStr(firstFree.str);
       });
-  }, [service, days]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, step === 2]);
 
   useEffect(() => {
     if (!service || !dateStr) return;
@@ -132,7 +148,9 @@ export default function BookingPage() {
       }
       return;
     }
-    setCancelToken((data as { cancel_token: string }).cancel_token);
+    const token = (data as { cancel_token: string }).cancel_token;
+    rememberToken(token);
+    setCancelToken(token);
     setStep(4);
   }
 
@@ -146,10 +164,38 @@ export default function BookingPage() {
     return g;
   }, [slots]);
 
+  /* ===== מסך בית ===== */
+  if (step === 0) {
+    return (
+      <main className="mx-auto flex min-h-[100svh] max-w-md flex-col items-center justify-between px-6 pb-10 pt-16 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-6">
+          <Image src="/logo.png" alt="Pretty Easy" width={280} height={84} priority />
+          <p className="text-lg leading-relaxed text-plum-500">
+            ברוכה הבאה 💕
+            <br />
+            קביעת תור אונליין – מהר, פשוט, מכל מקום
+          </p>
+          <button
+            onClick={startBooking}
+            className="btn-primary w-full max-w-xs py-4 text-lg shadow-lg shadow-blush-200"
+          >
+            קבעי תור ✨
+          </button>
+          <Link href="/my" className="btn-ghost border border-blush-200">
+            👤 האזור האישי שלי
+          </Link>
+        </div>
+        <p className="text-xs text-plum-500/60">שינוי וביטול תור – עד 24 שעות לפני</p>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-md px-4 pb-8">
       <header className="flex flex-col items-center pt-6 pb-4">
-        <Image src="/logo.png" alt="Pretty Easy" width={190} height={57} priority />
+        <button onClick={() => setStep(0)}>
+          <Image src="/logo.png" alt="Pretty Easy" width={190} height={57} priority />
+        </button>
       </header>
 
       {step < 4 && (
@@ -167,9 +213,12 @@ export default function BookingPage() {
 
       {step === 1 && (
         <section>
+          <button className="btn-ghost mb-1 text-sm" onClick={() => setStep(0)}>
+            → חזרה
+          </button>
           <h1 className="mb-4 text-xl font-bold">איזה טיפול בא לך? 💅</h1>
           <div className="flex flex-col gap-3">
-            {services.map((s) => (
+            {(services ?? []).map((s) => (
               <button
                 key={s.id}
                 onClick={() => {
@@ -185,20 +234,19 @@ export default function BookingPage() {
                 <div className="text-lg font-bold text-blush-600">₪{Number(s.price)}</div>
               </button>
             ))}
-            {services.length === 0 && (
-              <p className="text-center text-plum-500">טוען טיפולים…</p>
-            )}
+            {services === null && <p className="text-center text-plum-500">טוען טיפולים…</p>}
           </div>
         </section>
       )}
 
       {step === 2 && service && (
         <section className="pb-24">
-          {services.length > 1 && (
-            <button className="btn-ghost mb-1 text-sm" onClick={() => setStep(1)}>
-              → חזרה לטיפולים
-            </button>
-          )}
+          <button
+            className="btn-ghost mb-1 text-sm"
+            onClick={() => setStep(services && services.length > 1 ? 1 : 0)}
+          >
+            → חזרה
+          </button>
           <h1 className="mb-1 text-xl font-bold">מתי נוח לך?</h1>
           <p className="mb-4 text-sm text-plum-500">
             {service.name} · {service.duration_minutes} דק' · ₪{Number(service.price)}
@@ -271,7 +319,6 @@ export default function BookingPage() {
             </>
           )}
 
-          {/* פס המשך צף תחתון */}
           <div className="fixed inset-x-0 bottom-0 border-t border-blush-100 bg-white/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
             <div className="mx-auto flex max-w-md items-center gap-3">
               <div className="flex-1 text-sm">
@@ -360,40 +407,38 @@ export default function BookingPage() {
               <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>
             )}
             <button className="btn-primary" type="submit" disabled={submitting}>
-              {submitting ? "קובעת תור…" : "אישור וקביעת תור"}
+              {submitting ? "שולחת…" : "שליחת בקשה לתור"}
             </button>
+            <p className="text-center text-xs text-plum-500">
+              התור ייכנס ליומן אחרי אישור – תקבלי עדכון ⏳
+            </p>
           </form>
         </section>
       )}
 
       {step === 4 && service && slot && selectedDay && (
-        <section className="flex flex-col items-center pt-8 text-center">
+        <section className="flex flex-col items-center pt-6 text-center">
           <div className="animate-pop mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-blush-400 text-4xl text-white">
-            ✓
+            ⏳
           </div>
-          <h1 className="mb-2 text-2xl font-bold">התור נקבע! 🎉</h1>
-          <p className="mb-6 text-plum-500">
+          <h1 className="mb-2 text-2xl font-bold">הבקשה נשלחה!</h1>
+          <p className="mb-1 font-medium">
             {service.name} · יום {DAY_NAMES[selectedDay.date.getDay()]}{" "}
             {selectedDay.date.toLocaleDateString("he-IL")} בשעה {slot.label}
           </p>
-          <NotifyButton token={cancelToken!} />
+          <p className="mb-5 text-sm text-plum-500">
+            התור ממתין לאישור – ברגע שיאושר תקבלי עדכון 💕
+          </p>
+
+          <NotifyButton token={cancelToken!} label="🔔 עדכנו אותי כשהתור מאושר" />
 
           <div className="card mt-4 w-full text-sm">
-            <p className="mb-2">צריך לשנות או לבטל? זה הקישור האישי שלך:</p>
-            <a
-              href={`/cancel/${cancelToken}`}
-              className="break-all font-medium text-blush-600 underline"
-            >
-              ניהול התור – שינוי או ביטול
-            </a>
-            <p className="mt-3 text-xs text-plum-500">
-              שמרי את הקישור · שינוי וביטול עד 24 שעות לפני התור
+            <Link href="/my" className="font-medium text-blush-600 underline">
+              👤 לאזור האישי שלי – מעקב, שינוי וביטול
+            </Link>
+            <p className="mt-2 text-xs text-plum-500">
+              שינוי וביטול עד 24 שעות לפני התור
             </p>
-          </div>
-
-          <div className="card mt-4 w-full text-sm text-plum-500">
-            💡 טיפ: שמרי את האתר למסך הבית (שיתוף ← הוספה למסך הבית) וזה יעבוד כמו
-            אפליקציה
           </div>
         </section>
       )}
@@ -401,7 +446,7 @@ export default function BookingPage() {
   );
 }
 
-function NotifyButton({ token }: { token: string }) {
+function NotifyButton({ token, label }: { token: string; label: string }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -416,7 +461,7 @@ function NotifyButton({ token }: { token: string }) {
           setBusy(false);
         }}
       >
-        🔔 שלחו לי תזכורת יום לפני
+        {label}
       </button>
       {msg && <p className="mt-2 text-center text-xs text-plum-500">{msg}</p>}
     </div>
