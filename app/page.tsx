@@ -34,6 +34,21 @@ function slotGroup(label: string) {
   return "אחה״צ וערב 🌙";
 }
 
+function rememberClient(name: string, phone: string) {
+  try {
+    localStorage.setItem("pe_client", JSON.stringify({ name, phone }));
+  } catch {}
+}
+
+function loadClient(): { name: string; phone: string } | null {
+  try {
+    const raw = localStorage.getItem("pe_client");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 function rememberToken(t: string) {
   try {
     const arr: string[] = JSON.parse(localStorage.getItem("pe_tokens") || "[]");
@@ -57,6 +72,8 @@ export default function BookingPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [known, setKnown] = useState(false); // פרטים שמורים מהפעם הקודמת
+  const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cancelToken, setCancelToken] = useState<string | null>(null);
@@ -72,6 +89,12 @@ export default function BookingPage() {
   }, []);
 
   useEffect(() => {
+    const c = loadClient();
+    if (c?.name && c?.phone) {
+      setName(c.name);
+      setPhone(c.phone);
+      setKnown(true);
+    }
     supabase
       .from("services")
       .select("*")
@@ -200,6 +223,9 @@ export default function BookingPage() {
     }
     const token = (data as { cancel_token: string }).cancel_token;
     rememberToken(token);
+    rememberClient(name.trim(), phone.trim());
+    setKnown(true);
+    setEditing(false);
     setCancelToken(token);
     setStep(DONE);
   }
@@ -538,6 +564,23 @@ export default function BookingPage() {
             }}
             className="flex flex-col gap-4"
           >
+            {known && !editing ? (
+              <div className="card flex items-center justify-between gap-3 !bg-blush-50">
+                <div className="text-sm">
+                  <div className="text-xs text-plum-500">קובעת בשם</div>
+                  <div className="font-semibold">{name}</div>
+                  <div dir="ltr" className="text-right text-plum-500">{phone}</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-ghost text-xs"
+                  onClick={() => setEditing(true)}
+                >
+                  לא את? עריכה
+                </button>
+              </div>
+            ) : (
+              <>
             <div>
               <label className="label">שם מלא</label>
               <input
@@ -564,6 +607,8 @@ export default function BookingPage() {
                 style={{ textAlign: "right" }}
               />
             </div>
+              </>
+            )}
             <div>
               <label className="label">הערות (לא חובה)</label>
               <textarea
