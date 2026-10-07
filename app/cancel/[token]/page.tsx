@@ -133,7 +133,7 @@ export default function ManagePage() {
       {info && info !== "loading" && done === "cancelled" && (
         <div className="card w-full">
           <h1 className="mb-2 text-xl font-bold">התור בוטל</h1>
-          <p className="text-plum-500">נשמח לראות אותך בפעם אחרת 💕</p>
+          <p className="text-plum-500">אשמח לראות אותך בפעם אחרת 💕</p>
           <a href="/" className="btn-primary mt-4 inline-block">
             קביעת תור חדש
           </a>
