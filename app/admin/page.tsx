@@ -1907,7 +1907,7 @@ function BroadcastTab() {
               <Image src="/icon-192.png" alt="" width={36} height={36} className="rounded-lg" />
               <div className="min-w-0 flex-1 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="truncate font-semibold">{title || "Pretty Easy 💅"}</span>
+                  <span className="truncate font-semibold">{title || "Ariel Nails 💅"}</span>
                   <span className="text-[10px] text-gray-500">כעת</span>
                 </div>
                 <div className="whitespace-pre-wrap text-gray-700">{body}</div>
@@ -1956,7 +1956,7 @@ function BroadcastTab() {
               ההודעה תישלח עכשיו ל-<b>{recipients ?? 0} מכשירים</b>. אי אפשר לבטל אחרי השליחה.
             </p>
             <div className="mb-4 rounded-2xl bg-gray-100 p-3 text-sm">
-              <div className="font-semibold">{title || "Pretty Easy 💅"}</div>
+              <div className="font-semibold">{title || "Ariel Nails 💅"}</div>
               <div className="whitespace-pre-wrap text-gray-700">{body}</div>
             </div>
             <div className="flex gap-2">

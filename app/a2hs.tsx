@@ -69,7 +69,7 @@ export default function AddToHomeScreen() {
             className="rounded-xl"
           />
           <div className="flex-1 text-sm">
-            <p className="font-bold">שמרי את Pretty Easy במסך הבית 💅</p>
+            <p className="font-bold">שמרי את Ariel Nails במסך הבית 💅</p>
             <p className="text-plum-500">
               {isIos
                 ? "לחצי על כפתור השיתוף ← ואז ״הוספה למסך הבית״ – ככה תקבלי גם עדכונים על התורים"

@@ -4,13 +4,13 @@ import PwaSetup from "./pwa";
 import AddToHomeScreen from "./a2hs";
 
 export const metadata: Metadata = {
-  title: "Pretty Easy – קביעת תור",
+  title: "Ariel Nails – קביעת תור",
   description: "קביעת תורים אונליין – לק ג'ל ובניית ציפורניים",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Pretty Easy",
+    title: "Ariel Nails",
   },
   icons: {
     icon: "/icon-192.png",
