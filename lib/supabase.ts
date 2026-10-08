@@ -85,6 +85,14 @@ export type WorkingHour = {
   end_time: string;
 };
 
+export type WeeklyBreak = {
+  id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  label: string | null;
+};
+
 export type BlockedTime = {
   id: string;
   starts_at: string;

@@ -8,6 +8,7 @@ import {
   Service,
   Appointment,
   WorkingHour,
+  WeeklyBreak,
   BlockedTime,
   Client,
   Addon,
@@ -165,6 +166,7 @@ function CalendarTab() {
   const [view, setView] = useState<"day" | "week">("day");
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [blocks, setBlocks] = useState<BlockedTime[]>([]);
+  const [wbreaks, setWbreaks] = useState<WeeklyBreak[]>([]);
   const [pending, setPending] = useState<Appointment[]>([]);
   const [grid, setGrid] = useState({ start: 8, end: 20 });
   const [sel, setSel] = useState<Appointment | null>(null);
@@ -210,6 +212,10 @@ function CalendarTab() {
   }, [load]);
 
   useEffect(() => {
+    supabase
+      .from("weekly_breaks")
+      .select("*")
+      .then(({ data }) => setWbreaks((data as WeeklyBreak[]) ?? []));
     supabase.from("working_hours").select("*").then(({ data }) => {
       const whs = (data as WorkingHour[]) ?? [];
       if (whs.length) {
@@ -467,6 +473,31 @@ function CalendarTab() {
                       style={{ top: i * HOUR_PX }}
                     />
                   ))}
+
+                  {/* הפסקות קבועות */}
+                  {wbreaks
+                    .filter((b) => b.day_of_week === d.getDay())
+                    .map((b) => {
+                      const sh = parseInt(b.start_time, 10) + parseInt(b.start_time.slice(3, 5), 10) / 60;
+                      const eh = parseInt(b.end_time, 10) + parseInt(b.end_time.slice(3, 5), 10) / 60;
+                      const top = Math.max(0, (sh - grid.start) * HOUR_PX);
+                      const bottom = Math.min((grid.end - grid.start) * HOUR_PX, (eh - grid.start) * HOUR_PX);
+                      if (bottom <= top) return null;
+                      return (
+                        <div
+                          key={b.id}
+                          className="absolute inset-x-0.5 z-0 rounded-lg text-center text-[10px] text-gray-500"
+                          style={{
+                            top,
+                            height: bottom - top,
+                            background:
+                              "repeating-linear-gradient(45deg,#f1f1f1,#f1f1f1 6px,#e5e5e5 6px,#e5e5e5 12px)",
+                          }}
+                        >
+                          <span className="leading-6">{b.label || "לא פנוי"}</span>
+                        </div>
+                      );
+                    })}
 
                   {/* חסימות */}
                   {dayBlocks.map((b) => {
@@ -1106,6 +1137,34 @@ function HoursTab() {
   const [buffer, setBuffer] = useState(0);
   const [leadHours, setLeadHours] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [breaks, setBreaks] = useState<WeeklyBreak[]>([]);
+  const [newBreak, setNewBreak] = useState<{ day: number; start: string; end: string; label: string } | null>(null);
+
+  const loadBreaks = useCallback(async () => {
+    const { data } = await supabase.from("weekly_breaks").select("*").order("start_time");
+    setBreaks((data as WeeklyBreak[]) ?? []);
+  }, []);
+
+  useEffect(() => {
+    loadBreaks();
+  }, [loadBreaks]);
+
+  async function addBreak() {
+    if (!newBreak || newBreak.start >= newBreak.end) return;
+    await supabase.from("weekly_breaks").insert({
+      day_of_week: newBreak.day,
+      start_time: newBreak.start,
+      end_time: newBreak.end,
+      label: newBreak.label || null,
+    });
+    setNewBreak(null);
+    loadBreaks();
+  }
+
+  async function removeBreak(id: string) {
+    await supabase.from("weekly_breaks").delete().eq("id", id);
+    loadBreaks();
+  }
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -1158,8 +1217,12 @@ function HoursTab() {
   return (
     <section className="card flex flex-col gap-3">
       <h3 className="font-bold">שעות קבלה קבועות</h3>
+      <p className="text-xs text-plum-500">
+        לכל יום אפשר להוסיף גם שעות לא פנויות קבועות (הפסקת צהריים, איסוף ילדים…)
+      </p>
       {rows.map((r, i) => (
-        <div key={i} className="flex items-center gap-3 text-sm">
+        <div key={i} className="flex flex-col gap-1.5 border-b border-blush-50 pb-2">
+        <div className="flex items-center gap-3 text-sm">
           <label className="flex w-20 items-center gap-2">
             <input
               type="checkbox"
@@ -1189,6 +1252,68 @@ function HoursTab() {
               setRows((rs) => rs.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)))
             }
           />
+        </div>
+
+        {r.enabled && (
+          <div className="flex flex-wrap items-center gap-1.5 pr-20 text-xs">
+            {breaks
+              .filter((b) => b.day_of_week === i)
+              .map((b) => (
+                <span
+                  key={b.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-gray-600"
+                >
+                  🚫 {b.start_time.slice(0, 5)}–{b.end_time.slice(0, 5)}
+                  {b.label && <span className="text-gray-400">· {b.label}</span>}
+                  <button
+                    type="button"
+                    className="mr-1 text-red-600"
+                    onClick={() => removeBreak(b.id)}
+                    title="הסרה"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            {newBreak?.day === i ? (
+              <span className="inline-flex flex-wrap items-center gap-1.5 rounded-xl border border-blush-200 p-1.5">
+                <input
+                  type="time"
+                  className="input !w-auto !py-1 !text-xs"
+                  value={newBreak.start}
+                  onChange={(e) => setNewBreak({ ...newBreak, start: e.target.value })}
+                />
+                <span>עד</span>
+                <input
+                  type="time"
+                  className="input !w-auto !py-1 !text-xs"
+                  value={newBreak.end}
+                  onChange={(e) => setNewBreak({ ...newBreak, end: e.target.value })}
+                />
+                <input
+                  className="input !w-28 !py-1 !text-xs"
+                  placeholder="סיבה (לא חובה)"
+                  value={newBreak.label}
+                  onChange={(e) => setNewBreak({ ...newBreak, label: e.target.value })}
+                />
+                <button type="button" className="btn-primary !px-3 !py-1 text-xs" onClick={addBreak}>
+                  הוספה
+                </button>
+                <button type="button" className="btn-ghost !px-2 !py-1 text-xs" onClick={() => setNewBreak(null)}>
+                  ביטול
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="rounded-full border border-dashed border-blush-300 px-2.5 py-1 text-plum-500 hover:bg-blush-50"
+                onClick={() => setNewBreak({ day: i, start: "13:00", end: "14:00", label: "" })}
+              >
+                + שעות לא פנויות
+              </button>
+            )}
+          </div>
+        )}
         </div>
       ))}
       <div className="mt-2 border-t border-blush-100 pt-3">
