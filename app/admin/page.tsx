@@ -156,6 +156,57 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
 }
 
+// "HH:MM" בקפיצות של חצי שעה
+function timeOptions(from = 6, to = 23) {
+  const out: string[] = [];
+  for (let h = from; h <= to; h++) {
+    out.push(`${String(h).padStart(2, "0")}:00`);
+    if (h < to) out.push(`${String(h).padStart(2, "0")}:30`);
+  }
+  return out;
+}
+
+function TimeSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <select
+      className="input !w-auto !py-2"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {timeOptions().map((t) => (
+        <option key={t} value={t}>
+          {t}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function localDateTime(dateStr: string, time: string) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const [hh, mm] = time.split(":").map(Number);
+  return new Date(y, m - 1, d, hh, mm, 0, 0);
+}
+
+function toDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function addMinutes(time: string, mins: number) {
+  const [h, m] = time.split(":").map(Number);
+  const total = Math.min(23 * 60, h * 60 + m + mins);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 function CalendarTab() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedDay, setSelectedDay] = useState(() => {
@@ -178,6 +229,32 @@ function CalendarTab() {
   const [resSlot, setResSlot] = useState<string | null>(null);
   const [resLoading, setResLoading] = useState(false);
   const [resError, setResError] = useState<string | null>(null);
+  // חסימה מהירה מהיומן
+  const [blockDraft, setBlockDraft] = useState<{
+    date: string;
+    start: string;
+    end: string;
+    reason: string;
+  } | null>(null);
+
+  async function saveBlock() {
+    if (!blockDraft || blockDraft.start >= blockDraft.end) return;
+    setBusy(true);
+    await supabase.from("blocked_times").insert({
+      starts_at: localDateTime(blockDraft.date, blockDraft.start).toISOString(),
+      ends_at: localDateTime(blockDraft.date, blockDraft.end).toISOString(),
+      reason: blockDraft.reason || null,
+    });
+    setBusy(false);
+    setBlockDraft(null);
+    load();
+  }
+
+  async function removeBlock(b: BlockedTime) {
+    if (!confirm(`להסיר את החסימה${b.reason ? ` "${b.reason}"` : ""}?`)) return;
+    await supabase.from("blocked_times").delete().eq("id", b.id);
+    load();
+  }
 
   const load = useCallback(async () => {
     const end = new Date(weekStart);
@@ -464,7 +541,18 @@ function CalendarTab() {
                   )}
                 </div>
 
-                <div className="relative" style={{ height: (grid.end - grid.start) * HOUR_PX }}>
+                <div
+                  className="relative cursor-pointer"
+                  style={{ height: (grid.end - grid.start) * HOUR_PX }}
+                  title="לחיצה על שעה ריקה = חסימה"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const h = grid.start + (e.clientY - rect.top) / HOUR_PX;
+                    const startH = Math.floor(h * 2) / 2;
+                    const start = `${String(Math.floor(startH)).padStart(2, "0")}:${startH % 1 ? "30" : "00"}`;
+                    setBlockDraft({ date: toDateStr(d), start, end: addMinutes(start, 60), reason: "" });
+                  }}
+                >
                   {/* קווי שעה */}
                   {gridHours.map((h, i) => (
                     <div
@@ -493,6 +581,7 @@ function CalendarTab() {
                             background:
                               "repeating-linear-gradient(45deg,#f1f1f1,#f1f1f1 6px,#e5e5e5 6px,#e5e5e5 12px)",
                           }}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <span className="leading-6">{b.label || "לא פנוי"}</span>
                         </div>
@@ -510,15 +599,20 @@ function CalendarTab() {
                     return (
                       <div
                         key={b.id}
-                        className="absolute inset-x-0.5 z-0 rounded-lg text-center text-[10px] text-gray-500"
+                        className="absolute inset-x-0.5 z-[5] rounded-lg text-center text-[10px] text-gray-600"
                         style={{
                           top,
                           height: bottom - top,
                           background:
                             "repeating-linear-gradient(45deg,#f1f1f1,#f1f1f1 6px,#e5e5e5 6px,#e5e5e5 12px)",
                         }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeBlock(b);
+                        }}
+                        title="לחיצה להסרת החסימה"
                       >
-                        {b.reason && <span className="leading-6">{b.reason}</span>}
+                        <span className="leading-6">🚫 {b.reason || "חסום"}</span>
                       </div>
                     );
                   })}
@@ -534,7 +628,10 @@ function CalendarTab() {
                     return (
                       <button
                         key={a.id}
-                        onClick={() => setSel(a)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSel(a);
+                        }}
                         className={`absolute inset-x-0.5 z-10 overflow-hidden rounded-lg px-1.5 py-0.5 text-right text-[11px] leading-tight transition active:scale-[0.98] ${
                           isPending
                             ? "border-2 border-dashed border-amber-400 bg-amber-50 text-amber-900"
@@ -569,6 +666,73 @@ function CalendarTab() {
           })}
         </div>
       </div>
+
+      {/* חסימה מהירה */}
+      {blockDraft && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
+          onClick={() => setBlockDraft(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-1 text-lg font-bold">🚫 חסימת שעות</h3>
+            <p className="mb-3 text-sm text-plum-500">
+              יום {DAY_NAMES[localDateTime(blockDraft.date, "12:00").getDay()]} ·{" "}
+              {localDateTime(blockDraft.date, "12:00").toLocaleDateString("he-IL")}
+            </p>
+            <div className="mb-3 flex items-center gap-2 text-sm">
+              <span>מ-</span>
+              <TimeSelect
+                value={blockDraft.start}
+                onChange={(v) =>
+                  setBlockDraft({ ...blockDraft, start: v, end: v >= blockDraft.end ? addMinutes(v, 60) : blockDraft.end })
+                }
+              />
+              <span>עד</span>
+              <TimeSelect value={blockDraft.end} onChange={(v) => setBlockDraft({ ...blockDraft, end: v })} />
+            </div>
+            <div className="mb-3 flex flex-wrap gap-1.5 text-xs">
+              {[30, 60, 120, 180].map((m) => (
+                <button
+                  key={m}
+                  className="chip !py-1"
+                  onClick={() => setBlockDraft({ ...blockDraft, end: addMinutes(blockDraft.start, m) })}
+                >
+                  {durationLabel(m)}
+                </button>
+              ))}
+              <button
+                className="chip !py-1"
+                onClick={() =>
+                  setBlockDraft({
+                    ...blockDraft,
+                    start: `${String(grid.start).padStart(2, "0")}:00`,
+                    end: `${String(grid.end).padStart(2, "0")}:00`,
+                  })
+                }
+              >
+                כל היום
+              </button>
+            </div>
+            <input
+              className="input mb-4"
+              placeholder="סיבה (לא חובה)"
+              value={blockDraft.reason}
+              onChange={(e) => setBlockDraft({ ...blockDraft, reason: e.target.value })}
+            />
+            <div className="flex gap-2">
+              <button className="btn-primary flex-1" disabled={busy || blockDraft.start >= blockDraft.end} onClick={saveBlock}>
+                {busy ? "שומרת…" : "חסימה"}
+              </button>
+              <button className="btn-ghost" onClick={() => setBlockDraft(null)}>
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* פרטי תור */}
       {sel && (
@@ -1362,9 +1526,18 @@ function HoursTab() {
 
 function BlockedTab() {
   const [blocks, setBlocks] = useState<BlockedTime[]>([]);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [dateStr, setDateStr] = useState(() => toDateStr(new Date()));
+  const [start, setStart] = useState("12:00");
+  const [end, setEnd] = useState("13:00");
+  const [allDay, setAllDay] = useState(false);
   const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const days = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    return d;
+  });
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -1381,13 +1554,16 @@ function BlockedTab() {
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
+    const s = allDay ? "00:00" : start;
+    const en = allDay ? "23:59" : end;
+    if (s >= en) return;
+    setSaving(true);
     await supabase.from("blocked_times").insert({
-      starts_at: new Date(start).toISOString(),
-      ends_at: new Date(end).toISOString(),
+      starts_at: localDateTime(dateStr, s).toISOString(),
+      ends_at: localDateTime(dateStr, en).toISOString(),
       reason: reason || null,
     });
-    setStart("");
-    setEnd("");
+    setSaving(false);
     setReason("");
     load();
   }
@@ -1397,36 +1573,101 @@ function BlockedTab() {
     load();
   }
 
+  const selected = localDateTime(dateStr, "12:00");
+
   return (
     <section className="flex flex-col gap-4">
+      <p className="text-sm text-plum-500">
+        שעות שאת לא פנויה בתאריך מסוים. טיפ: אפשר גם ללחוץ על שעה ריקה ביומן.
+      </p>
+
       <form onSubmit={add} className="card flex flex-col gap-3">
-        <h3 className="font-bold">חסימת זמן (חופשה / הפסקה)</h3>
-        <div>
-          <label className="label">מתחילת</label>
-          <input className="input" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} required />
+        <h3 className="font-bold">חסימה חדשה</h3>
+
+        <div className="-mx-5 flex gap-1.5 overflow-x-auto px-5 pb-1">
+          {days.map((d) => {
+            const str = toDateStr(d);
+            const isToday = d.toDateString() === new Date().toDateString();
+            return (
+              <button
+                type="button"
+                key={str}
+                onClick={() => setDateStr(str)}
+                className={`flex min-w-[56px] flex-col items-center rounded-xl border px-2 py-1.5 text-xs ${
+                  dateStr === str
+                    ? "border-plum-700 bg-plum-700 text-white"
+                    : isToday
+                    ? "border-blush-300 bg-blush-50"
+                    : "border-blush-200 bg-white"
+                }`}
+              >
+                <span>{DAY_NAMES[d.getDay()].slice(0, 3)}'</span>
+                <span className="text-base font-bold">{d.getDate()}</span>
+                <span className="text-[10px]">{d.toLocaleDateString("he-IL", { month: "short" })}</span>
+              </button>
+            );
+          })}
         </div>
-        <div>
-          <label className="label">עד</label>
-          <input className="input" type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} required />
+
+        <div className="text-sm font-medium">
+          יום {DAY_NAMES[selected.getDay()]} · {selected.toLocaleDateString("he-IL")}
         </div>
-        <input className="input" placeholder="סיבה (לא חובה)" value={reason} onChange={(e) => setReason(e.target.value)} />
-        <button className="btn-primary">חסימה</button>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+          כל היום
+        </label>
+
+        {!allDay && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span>מ-</span>
+            <TimeSelect
+              value={start}
+              onChange={(v) => {
+                setStart(v);
+                if (v >= end) setEnd(addMinutes(v, 60));
+              }}
+            />
+            <span>עד</span>
+            <TimeSelect value={end} onChange={setEnd} />
+          </div>
+        )}
+
+        <input
+          className="input"
+          placeholder="סיבה (לא חובה) – למשל: רופא, אירוע"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+        <button className="btn-primary" disabled={saving}>
+          {saving ? "שומרת…" : "🚫 חסימה"}
+        </button>
       </form>
 
-      {blocks.map((b) => (
-        <div key={b.id} className="card flex items-center justify-between text-sm">
-          <div>
-            <div className="font-semibold">
-              {new Date(b.starts_at).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })} –{" "}
-              {new Date(b.ends_at).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })}
+      <h3 className="font-bold">חסימות קרובות</h3>
+      {blocks.map((b) => {
+        const s = new Date(b.starts_at);
+        const e = new Date(b.ends_at);
+        const sameDay = s.toDateString() === e.toDateString();
+        const wholeDay = sameDay && s.getHours() === 0 && e.getHours() === 23;
+        return (
+          <div key={b.id} className="card flex items-center justify-between text-sm">
+            <div>
+              <div className="font-semibold">
+                יום {DAY_NAMES[s.getDay()]} · {s.toLocaleDateString("he-IL")}
+                {!sameDay && ` – ${e.toLocaleDateString("he-IL")}`}
+              </div>
+              <div className="text-plum-500">
+                {wholeDay ? "כל היום" : `${fmtTime(b.starts_at)}–${fmtTime(b.ends_at)}`}
+                {b.reason && ` · ${b.reason}`}
+              </div>
             </div>
-            {b.reason && <div className="text-plum-500">{b.reason}</div>}
+            <button className="btn-ghost text-xs text-red-700" onClick={() => remove(b.id)}>
+              הסרה
+            </button>
           </div>
-          <button className="btn-ghost text-xs text-red-700" onClick={() => remove(b.id)}>
-            הסרה
-          </button>
-        </div>
-      ))}
+        );
+      })}
       {blocks.length === 0 && <p className="text-center text-sm text-plum-500">אין חסימות קרובות</p>}
     </section>
   );
