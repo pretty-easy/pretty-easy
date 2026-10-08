@@ -1,0 +1,2 @@
+-- 0010: טבלת broadcasts (היסטוריית הודעות לכל הלקוחות); Edge Function send-push: type=broadcast (אדמין בלבד)
+-- *** כבר הוחלה על ה-DB ע"י Claude – לתיעוד בלבד ***

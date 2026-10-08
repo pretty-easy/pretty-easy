@@ -19,7 +19,7 @@ import {
 import { subscribeAdminPush, pushResultMessage } from "@/lib/push";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
-const TABS = ["יומן", "טיפולים", "תוספות", "שעות עבודה", "חסימות", "לקוחות"] as const;
+const TABS = ["יומן", "טיפולים", "תוספות", "שעות עבודה", "חסימות", "לקוחות", "הודעות"] as const;
 type Tab = (typeof TABS)[number];
 
 function startOfWeek(d: Date) {
@@ -139,6 +139,7 @@ function Dashboard() {
       {tab === "שעות עבודה" && <HoursTab />}
       {tab === "חסימות" && <BlockedTab />}
       {tab === "לקוחות" && <ClientsTab />}
+      {tab === "הודעות" && <BroadcastTab />}
     </main>
   );
 }
@@ -1739,6 +1740,202 @@ function ClientsTab() {
         </div>
       ))}
       {filtered.length === 0 && <p className="text-center text-sm text-plum-500">אין לקוחות עדיין</p>}
+    </section>
+  );
+}
+
+/* ===== הודעות לכל הלקוחות ===== */
+
+const TITLE_MAX = 40;
+const BODY_MAX = 140;
+
+const TEMPLATES: { title: string; body: string }[] = [
+  { title: "התפנה תור היום! 🏃‍♀️", body: "התפנה תור היום – ראשונה שתופסת 💅 כנסי לאפליקציה וקבעי" },
+  { title: "נפתחו תורים לשבוע הבא 📅", body: "פתחתי את היומן לשבוע הבא – מהרי לתפוס את השעה שנוחה לך 💕" },
+  { title: "מבצע לזמן מוגבל 🎁", body: "השבוע תוספת קישוטים במתנה לכל לק ג'ל! קבעי תור עכשיו" },
+  { title: "חג שמח! ✨", body: "מאחלת לך חג שמח ומלא יופי 💕 נתראה אחרי החג" },
+  { title: "שינוי בשעות הפעילות ⏰", body: "שימי לב: השבוע אני עובדת בשעות שונות. בדקי את השעות הפנויות באפליקציה" },
+  { title: "מתגעגעת 💕", body: "עבר זמן מהביקור האחרון שלך… בואי נרענן את הציפורניים 💅" },
+];
+
+type Broadcast = { id: string; title: string; body: string; sent_count: number; created_at: string };
+
+function BroadcastTab() {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [recipients, setRecipients] = useState<number | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [history, setHistory] = useState<Broadcast[]>([]);
+
+  const load = useCallback(async () => {
+    const [{ count }, { data }] = await Promise.all([
+      supabase
+        .from("push_subscriptions")
+        .select("id", { count: "exact", head: true })
+        .eq("is_admin", false),
+      supabase.from("broadcasts").select("*").order("created_at", { ascending: false }).limit(20),
+    ]);
+    setRecipients(count ?? 0);
+    setHistory((data as Broadcast[]) ?? []);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function send() {
+    setSending(true);
+    setResult(null);
+    const { data, error } = await supabase.functions.invoke("send-push", {
+      body: { type: "broadcast", title: title.trim(), body: body.trim() },
+    });
+    setSending(false);
+    setConfirming(false);
+    if (error || !data?.ok) {
+      setResult("השליחה נכשלה, נסי שוב");
+      return;
+    }
+    setResult(`נשלח ל-${data.sent} מכשירים ✓`);
+    setTitle("");
+    setBody("");
+    load();
+  }
+
+  const canSend = body.trim().length > 0 && !sending;
+
+  return (
+    <section className="flex flex-col gap-4">
+      <p className="text-sm text-plum-500">
+        הודעת פוש לכל הלקוחות שהפעילו התראות. כרגע:{" "}
+        <b>{recipients === null ? "…" : `${recipients} מכשירים`}</b>
+      </p>
+
+      <div className="card flex flex-col gap-3">
+        <h3 className="font-bold">הודעות מוכנות</h3>
+        <div className="flex flex-wrap gap-1.5">
+          {TEMPLATES.map((t) => (
+            <button
+              key={t.title}
+              className={`chip !py-1.5 text-xs ${title === t.title && body === t.body ? "chip-active" : ""}`}
+              onClick={() => {
+                setTitle(t.title);
+                setBody(t.body);
+                setResult(null);
+              }}
+            >
+              {t.title}
+            </button>
+          ))}
+        </div>
+
+        <div>
+          <label className="label">
+            כותרת{" "}
+            <span className={`text-xs ${title.length > TITLE_MAX ? "text-red-600" : "text-plum-500"}`}>
+              ({title.length}/{TITLE_MAX})
+            </span>
+          </label>
+          <input
+            className="input"
+            value={title}
+            maxLength={TITLE_MAX}
+            placeholder="למשל: התפנה תור היום! 🏃‍♀️"
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label">
+            תוכן ההודעה{" "}
+            <span className={`text-xs ${body.length > BODY_MAX ? "text-red-600" : "text-plum-500"}`}>
+              ({body.length}/{BODY_MAX})
+            </span>
+          </label>
+          <textarea
+            className="input"
+            rows={3}
+            value={body}
+            maxLength={BODY_MAX}
+            placeholder="כתבי כאן הודעה חופשית…"
+            onChange={(e) => setBody(e.target.value)}
+          />
+          <p className="mt-1 text-xs text-plum-500">
+            טיפ: הודעות קצרות נקראות יותר. באייפון מוצגות כ-4 שורות.
+          </p>
+        </div>
+
+        {/* תצוגה מקדימה */}
+        {(title || body) && (
+          <div>
+            <div className="label">ככה זה ייראה בטלפון</div>
+            <div className="flex items-start gap-3 rounded-2xl bg-gray-100 p-3 shadow-inner">
+              <Image src="/icon-192.png" alt="" width={36} height={36} className="rounded-lg" />
+              <div className="min-w-0 flex-1 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="truncate font-semibold">{title || "Pretty Easy 💅"}</span>
+                  <span className="text-[10px] text-gray-500">כעת</span>
+                </div>
+                <div className="whitespace-pre-wrap text-gray-700">{body}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <button className="btn-primary" disabled={!canSend} onClick={() => setConfirming(true)}>
+          📣 שליחה לכל הלקוחות
+        </button>
+        {result && <p className="text-center text-sm text-plum-500">{result}</p>}
+      </div>
+
+      {history.length > 0 && (
+        <div>
+          <h3 className="mb-2 font-bold">הודעות שנשלחו</h3>
+          <div className="card divide-y divide-blush-100 !p-0 text-sm">
+            {history.map((h) => (
+              <div key={h.id} className="px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">{h.title}</span>
+                  <span className="text-xs text-plum-500">
+                    {new Date(h.created_at).toLocaleDateString("he-IL")} · {h.sent_count} מכשירים
+                  </span>
+                </div>
+                <div className="text-plum-500">{h.body}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* מסך אימות */}
+      {confirming && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
+          onClick={() => !sending && setConfirming(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-1 text-lg font-bold">לשלוח לכל הלקוחות?</h3>
+            <p className="mb-3 text-sm text-plum-500">
+              ההודעה תישלח עכשיו ל-<b>{recipients ?? 0} מכשירים</b>. אי אפשר לבטל אחרי השליחה.
+            </p>
+            <div className="mb-4 rounded-2xl bg-gray-100 p-3 text-sm">
+              <div className="font-semibold">{title || "Pretty Easy 💅"}</div>
+              <div className="whitespace-pre-wrap text-gray-700">{body}</div>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn-primary flex-1" disabled={sending} onClick={send}>
+                {sending ? "שולחת…" : "כן, שלחי 📣"}
+              </button>
+              <button className="btn-ghost" disabled={sending} onClick={() => setConfirming(false)}>
+                חזרה לעריכה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
