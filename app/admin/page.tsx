@@ -1646,29 +1646,63 @@ function BlockedTab() {
       </form>
 
       <h3 className="font-bold">חסימות קרובות</h3>
-      {blocks.map((b) => {
-        const s = new Date(b.starts_at);
-        const e = new Date(b.ends_at);
-        const sameDay = s.toDateString() === e.toDateString();
-        const wholeDay = sameDay && s.getHours() === 0 && e.getHours() === 23;
-        return (
-          <div key={b.id} className="card flex items-center justify-between text-sm">
-            <div>
-              <div className="font-semibold">
-                יום {DAY_NAMES[s.getDay()]} · {s.toLocaleDateString("he-IL")}
-                {!sameDay && ` – ${e.toLocaleDateString("he-IL")}`}
+      {(() => {
+        // קיבוץ לפי יום
+        const groups: Record<string, BlockedTime[]> = {};
+        blocks.forEach((b) => {
+          const k = toDateStr(new Date(b.starts_at));
+          (groups[k] ??= []).push(b);
+        });
+        return Object.entries(groups).map(([k, list]) => {
+          const d = localDateTime(k, "12:00");
+          const isToday = d.toDateString() === new Date().toDateString();
+          return (
+            <div key={k} className="card !py-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className={`text-sm font-bold ${isToday ? "text-blush-600" : ""}`}>
+                  יום {DAY_NAMES[d.getDay()]} · {d.toLocaleDateString("he-IL")}
+                  {isToday && " (היום)"}
+                </span>
+                <button
+                  type="button"
+                  className="text-xs text-plum-500 hover:text-plum-700"
+                  onClick={() => {
+                    setDateStr(k);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  + עוד שעות ביום זה
+                </button>
               </div>
-              <div className="text-plum-500">
-                {wholeDay ? "כל היום" : `${fmtTime(b.starts_at)}–${fmtTime(b.ends_at)}`}
-                {b.reason && ` · ${b.reason}`}
+              <div className="flex flex-wrap gap-1.5">
+                {list.map((b) => {
+                  const st = new Date(b.starts_at);
+                  const en = new Date(b.ends_at);
+                  const wholeDay = st.getHours() === 0 && en.getHours() === 23;
+                  return (
+                    <span
+                      key={b.id}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700"
+                      title={b.reason ?? ""}
+                    >
+                      🚫 {wholeDay ? "כל היום" : `${fmtTime(b.starts_at)}–${fmtTime(b.ends_at)}`}
+                      {b.reason && <span className="text-gray-400">· {b.reason}</span>}
+                      <button
+                        type="button"
+                        className="mr-0.5 text-red-600"
+                        onClick={() => remove(b.id)}
+                        title="הסרה"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             </div>
-            <button className="btn-ghost text-xs text-red-700" onClick={() => remove(b.id)}>
-              הסרה
-            </button>
-          </div>
-        );
-      })}
+          );
+        });
+      })()}
       {blocks.length === 0 && <p className="text-center text-sm text-plum-500">אין חסימות קרובות</p>}
     </section>
   );
