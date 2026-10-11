@@ -1,0 +1,2 @@
+-- 0011: clients.installed_at / platform / last_seen_at + report_client_presence(token, installed, platform)
+-- *** כבר הוחלה על ה-DB ע"י Claude – לתיעוד בלבד ***

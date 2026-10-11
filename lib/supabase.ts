@@ -106,4 +106,7 @@ export type Client = {
   phone: string;
   notes: string | null;
   created_at: string;
+  installed_at: string | null;
+  platform: string | null;
+  last_seen_at: string | null;
 };

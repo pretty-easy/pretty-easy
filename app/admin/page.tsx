@@ -1712,14 +1712,22 @@ function BlockedTab() {
 
 function ClientsTab() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [pushPhones, setPushPhones] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
 
-  const load = useCallback(() => {
-    supabase
-      .from("clients")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => setClients((data as Client[]) ?? []));
+  const load = useCallback(async () => {
+    const [{ data: cs }, { data: subs }] = await Promise.all([
+      supabase.from("clients").select("*").order("created_at", { ascending: false }),
+      supabase.from("push_subscriptions").select("client_phone").eq("is_admin", false),
+    ]);
+    setClients((cs as Client[]) ?? []);
+    setPushPhones(
+      new Set(
+        ((subs as { client_phone: string | null }[]) ?? [])
+          .map((s) => s.client_phone)
+          .filter((p): p is string => !!p)
+      )
+    );
   }, []);
 
   useEffect(() => {
@@ -1735,9 +1743,25 @@ function ClientsTab() {
   const filtered = clients.filter(
     (c) => c.name.includes(q) || c.phone.includes(q)
   );
+  const installedCount = clients.filter((c) => c.installed_at).length;
+  const pushCount = clients.filter((c) => pushPhones.has(c.phone)).length;
 
   return (
     <section className="flex flex-col gap-3">
+      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="card !p-3">
+          <div className="text-xl font-bold">{clients.length}</div>
+          <div className="text-plum-500">לקוחות</div>
+        </div>
+        <div className="card !p-3">
+          <div className="text-xl font-bold text-green-700">{installedCount}</div>
+          <div className="text-plum-500">📲 מותקן</div>
+        </div>
+        <div className="card !p-3">
+          <div className="text-xl font-bold text-green-700">{pushCount}</div>
+          <div className="text-plum-500">🔔 התראות</div>
+        </div>
+      </div>
       <input
         className="input"
         placeholder="חיפוש לפי שם או טלפון…"
@@ -1753,6 +1777,27 @@ function ClientsTab() {
             </a>
             <div className="text-xs text-plum-500">
               הצטרפה {new Date(c.created_at).toLocaleDateString("he-IL")}
+              {c.last_seen_at &&
+                ` · נראתה ${new Date(c.last_seen_at).toLocaleDateString("he-IL")}`}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+              <span
+                className={`rounded-full px-2 py-0.5 ${
+                  c.installed_at ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"
+                }`}
+                title={c.installed_at ? `הותקן ${new Date(c.installed_at).toLocaleDateString("he-IL")}` : ""}
+              >
+                {c.installed_at
+                  ? `📲 מותקן${c.platform === "ios" ? " · אייפון" : c.platform === "android" ? " · אנדרואיד" : ""}`
+                  : "לא מותקן"}
+              </span>
+              <span
+                className={`rounded-full px-2 py-0.5 ${
+                  pushPhones.has(c.phone) ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {pushPhones.has(c.phone) ? "🔔 התראות פעילות" : "בלי התראות"}
+              </span>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
