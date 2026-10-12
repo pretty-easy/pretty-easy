@@ -78,15 +78,24 @@ export default function BookingPage() {
   const [error, setError] = useState<string | null>(null);
   const [cancelToken, setCancelToken] = useState<string | null>(null);
 
+  // טווח קביעה קדימה – מההגדרות של האדמין
+  const [horizonDays, setHorizonDays] = useState<number | null>(null);
+  useEffect(() => {
+    supabase.rpc("get_booking_horizon").then(({ data }) => {
+      const d = (data as { days?: number } | null)?.days;
+      setHorizonDays(typeof d === "number" ? Math.min(d, 120) : 21);
+    });
+  }, []);
+
   const days = useMemo(() => {
     const out: { date: Date; str: string }[] = [];
-    for (let i = 0; i < 21; i++) {
+    for (let i = 0; i < (horizonDays ?? 21); i++) {
       const d = new Date();
       d.setDate(d.getDate() + i);
       out.push({ date: d, str: toDateStr(d) });
     }
     return out;
-  }, []);
+  }, [horizonDays]);
 
   useEffect(() => {
     const c = loadClient();
@@ -151,8 +160,8 @@ export default function BookingPage() {
   // נטען רק כשנכנסים לשלב המועד עם שילוב חדש – חזרה מהפרטים לא מאפסת את הבחירה.
   const [availKey, setAvailKey] = useState("");
   useEffect(() => {
-    if (!service || step !== TIME) return;
-    const key = service.id + "|" + chosenIds.join(",");
+    if (!service || step !== TIME || horizonDays === null) return;
+    const key = service.id + "|" + chosenIds.join(",") + "|" + horizonDays;
     if (key === availKey) return;
     setAvailKey(key);
     setAvailability(null);
@@ -162,7 +171,7 @@ export default function BookingPage() {
       .rpc("get_available_dates_v2", {
         p_service_id: service.id,
         p_from: toDateStr(new Date()),
-        p_days: 21,
+        p_days: horizonDays ?? 21,
         p_addon_ids: addonIdsParam,
       })
       .then(({ data }) => {
@@ -175,7 +184,7 @@ export default function BookingPage() {
         if (firstFree) setDateStr(firstFree.str);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, step]);
+  }, [service, step, horizonDays]);
 
   useEffect(() => {
     if (!service || !dateStr) return;
@@ -445,7 +454,14 @@ export default function BookingPage() {
             {durationLabel(totalMinutes)} · {total && priceLabel(total.lo, total.hi)}
           </p>
 
-          {availability === null ? (
+          {horizonDays === 0 ? (
+            <div className="card text-center">
+              <p className="font-semibold">היומן עוד לא נפתח לתאריכים הבאים 💕</p>
+              <p className="mt-1 text-sm text-plum-500">
+                הפעילי התראות ותקבלי עדכון ברגע שייפתחו תורים חדשים
+              </p>
+            </div>
+          ) : availability === null ? (
             <p className="text-plum-500">בודק ימים פנויים…</p>
           ) : (
             <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-2">

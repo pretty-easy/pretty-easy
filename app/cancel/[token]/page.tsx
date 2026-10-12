@@ -49,15 +49,23 @@ export default function ManagePage() {
   const [slot, setSlot] = useState<Slot | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
 
+  const [horizonDays, setHorizonDays] = useState(21);
+  useEffect(() => {
+    supabase.rpc("get_booking_horizon").then(({ data }) => {
+      const d = (data as { days?: number } | null)?.days;
+      if (typeof d === "number") setHorizonDays(Math.min(d, 120));
+    });
+  }, []);
+
   const days = useMemo(() => {
     const out: { date: Date; str: string }[] = [];
-    for (let i = 0; i < 21; i++) {
+    for (let i = 0; i < horizonDays; i++) {
       const d = new Date();
       d.setDate(d.getDate() + i);
       out.push({ date: d, str: toDateStr(d) });
     }
     return out;
-  }, []);
+  }, [horizonDays]);
 
   const load = useCallback(() => {
     supabase

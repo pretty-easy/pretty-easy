@@ -1301,6 +1301,8 @@ function HoursTab() {
   );
   const [buffer, setBuffer] = useState(0);
   const [leadHours, setLeadHours] = useState(0);
+  const [maxDays, setMaxDays] = useState(21);
+  const [openUntil, setOpenUntil] = useState(""); // YYYY-MM-DD או ריק
   const [saving, setSaving] = useState(false);
   const [breaks, setBreaks] = useState<WeeklyBreak[]>([]);
   const [newBreak, setNewBreak] = useState<{ day: number; start: string; end: string; label: string } | null>(null);
@@ -1350,11 +1352,13 @@ function HoursTab() {
     supabase
       .from("app_settings")
       .select("key, value")
-      .in("key", ["buffer_minutes", "min_lead_hours"])
+      .in("key", ["buffer_minutes", "min_lead_hours", "max_days_ahead", "booking_open_until"])
       .then(({ data }) => {
         (data as { key: string; value: string }[] | null)?.forEach((r) => {
           if (r.key === "buffer_minutes") setBuffer(Number(r.value) || 0);
           if (r.key === "min_lead_hours") setLeadHours(Number(r.value) || 0);
+          if (r.key === "max_days_ahead") setMaxDays(Number(r.value) || 0);
+          if (r.key === "booking_open_until") setOpenUntil(r.value || "");
         });
       });
   }, []);
@@ -1371,6 +1375,8 @@ function HoursTab() {
       [
         { key: "buffer_minutes", value: String(buffer) },
         { key: "min_lead_hours", value: String(leadHours) },
+        { key: "max_days_ahead", value: String(maxDays) },
+        { key: "booking_open_until", value: openUntil },
       ],
       { onConflict: "key" }
     );
@@ -1515,6 +1521,80 @@ function HoursTab() {
             לא חל עלייך בהזזת תורים מהיומן.
           </span>
         </div>
+      </div>
+      <div className="border-t border-blush-100 pt-3">
+        <label className="label">📅 פתיחת היומן ללקוחות</label>
+        {(() => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const byMax = maxDays > 0 ? new Date(today.getTime() + maxDays * 864e5) : null;
+          const byUntil = openUntil ? localDateTime(openUntil, "12:00") : null;
+          const eff =
+            byMax && byUntil ? (byMax < byUntil ? byMax : byUntil) : byMax ?? byUntil;
+          const addDays = (n: number) => {
+            const base = openUntil ? localDateTime(openUntil, "12:00") : today;
+            const d = new Date(Math.max(base.getTime(), today.getTime()) + n * 864e5);
+            setOpenUntil(toDateStr(d));
+          };
+          const endOfMonth = (offset: number) => {
+            const d = new Date(today.getFullYear(), today.getMonth() + offset + 1, 0);
+            setOpenUntil(toDateStr(d));
+          };
+          return (
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="rounded-xl bg-blush-50 p-2.5">
+                הלקוחות יכולות לקבוע כרגע עד:{" "}
+                <b>
+                  {eff
+                    ? `יום ${DAY_NAMES[eff.getDay()]} ${eff.toLocaleDateString("he-IL")}`
+                    : "בלי הגבלה"}
+                </b>
+                {eff && eff < today && (
+                  <span className="text-red-700"> · היומן סגור לקביעה! פתחי תאריכים</span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-28">פתוח עד תאריך:</span>
+                <input
+                  type="date"
+                  className="input !w-auto !py-1.5"
+                  value={openUntil}
+                  min={toDateStr(today)}
+                  onChange={(e) => setOpenUntil(e.target.value)}
+                />
+                {openUntil && (
+                  <button type="button" className="btn-ghost !px-2 text-xs" onClick={() => setOpenUntil("")}>
+                    ✕ נקה
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                <button type="button" className="chip !py-1" onClick={() => addDays(7)}>+ שבוע</button>
+                <button type="button" className="chip !py-1" onClick={() => addDays(14)}>+ שבועיים</button>
+                <button type="button" className="chip !py-1" onClick={() => addDays(30)}>+ חודש</button>
+                <button type="button" className="chip !py-1" onClick={() => endOfMonth(0)}>עד סוף החודש</button>
+                <button type="button" className="chip !py-1" onClick={() => endOfMonth(1)}>עד סוף החודש הבא</button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-28">מקסימום קדימה:</span>
+                <input
+                  className="input !w-20 !py-1.5"
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={maxDays}
+                  onChange={(e) => setMaxDays(Math.max(0, +e.target.value))}
+                />
+                <span className="text-xs text-plum-500">ימים (0 = בלי הגבלה)</span>
+              </div>
+              <p className="text-xs text-plum-500">
+                הלקוחות רואות עד המוקדם מבין השניים. את עצמך יכולה להזיז תורים לכל תאריך.
+              </p>
+            </div>
+          );
+        })()}
       </div>
       <button className="btn-primary mt-2" onClick={save} disabled={saving}>
         {saving ? "שומרת…" : saved ? "נשמר ✓" : "שמירה"}

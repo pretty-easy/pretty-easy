@@ -1,0 +1,3 @@
+-- 0012: טווח קביעה קדימה – app_settings.max_days_ahead / booking_open_until,
+--       _booking_horizon(), get_booking_horizon(), _available_slots2 מכבדת את הטווח (לקוחות בלבד)
+-- *** כבר הוחלה על ה-DB ע"י Claude – לתיעוד בלבד ***
