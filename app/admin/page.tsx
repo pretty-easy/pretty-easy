@@ -15,6 +15,7 @@ import {
   priceLabel,
   durationLabel,
   waLink,
+  gcalLink,
 } from "@/lib/supabase";
 import { subscribeAdminPush, pushResultMessage } from "@/lib/push";
 import {
@@ -176,6 +177,21 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
 }
 
+function apptCalendarLink(a: Appointment) {
+  const svc = a.services?.name ?? "";
+  const extras = (a.addons ?? []).map((x) => x.name);
+  const title = `${a.client_name} – ${svc}${extras.length ? " + " + extras.join(" + ") : ""}`;
+  const details = [
+    `לקוחה: ${a.client_name}`,
+    `טלפון: ${a.client_phone}`,
+    `טיפול: ${svc}${extras.length ? " + " + extras.join(" + ") : ""}`,
+    a.notes ? `הערות: ${a.notes}` : "",
+    "",
+    "נוצר מ-Pretty Easy",
+  ].filter(Boolean).join("\n");
+  return gcalLink({ title, start: a.starts_at, end: a.ends_at, details });
+}
+
 // "HH:MM" בקפיצות של חצי שעה
 function timeOptions(from = 6, to = 23) {
   const out: string[] = [];
@@ -250,6 +266,8 @@ function CalendarTab() {
   const [resSlot, setResSlot] = useState<string | null>(null);
   const [resLoading, setResLoading] = useState(false);
   const [resError, setResError] = useState<string | null>(null);
+  // אחרי אישור: הצעה להוסיף ליומן גוגל
+  const [justApproved, setJustApproved] = useState<Appointment | null>(null);
   // חסימה מהירה מהיומן
   const [blockDraft, setBlockDraft] = useState<{
     date: string;
@@ -332,6 +350,10 @@ function CalendarTab() {
     setBusy(true);
     await supabase.from("appointments").update({ status }).eq("id", id);
     setBusy(false);
+    if (status === "confirmed") {
+      const a = sel?.id === id ? sel : appts.find((x) => x.id === id) ?? pending.find((x) => x.id === id) ?? null;
+      setJustApproved(a ? { ...a, status: "confirmed" } : null);
+    }
     closeModal();
     load();
   }
@@ -658,6 +680,29 @@ function CalendarTab() {
         </div>
       </div>
 
+      {/* אחרי אישור: הוספה ליומן גוגל */}
+      {justApproved && (
+        <div className="fixed inset-x-0 bottom-24 z-50 px-4">
+          <div className="mx-auto flex max-w-md items-center gap-3 rounded-3xl bg-plum-900 p-4 text-white shadow-plum">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-success text-white"><CheckIcon size={20} strokeWidth={2.5} /></span>
+            <div className="min-w-0 flex-1 text-sm">
+              <div className="font-extrabold">התור אושר – הלקוחה קיבלה עדכון</div>
+              <div className="truncate text-xs opacity-80">{justApproved.client_name} · {fmtTime(justApproved.starts_at)}</div>
+            </div>
+            <a
+              href={apptCalendarLink(justApproved)}
+              target="_blank"
+              rel="noopener"
+              onClick={() => setJustApproved(null)}
+              className="flex shrink-0 items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-extrabold text-plum-900"
+            >
+              <CalendarIcon size={14} />ליומן גוגל
+            </a>
+            <button aria-label="סגירה" className="shrink-0 opacity-70" onClick={() => setJustApproved(null)}><XIcon size={18} /></button>
+          </div>
+        </div>
+      )}
+
       {/* חסימה מהירה */}
       {blockDraft && (
         <div
@@ -778,8 +823,8 @@ function CalendarTab() {
               )}
             </div>
 
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <a href={`tel:${sel.client_phone}`} className="btn-outline"><PhoneIcon size={16} />חיוג</a>
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              <a href={`tel:${sel.client_phone}`} className="btn-outline !px-2"><PhoneIcon size={16} />חיוג</a>
               <a
                 href={waLink(
                   sel.client_phone,
@@ -787,13 +832,16 @@ function CalendarTab() {
                 )}
                 target="_blank"
                 rel="noopener"
-                className="btn-outline !border-[#CFEBDD] !bg-success-50 !text-success"
+                className="btn-outline !border-[#CFEBDD] !bg-success-50 !px-2 !text-success"
               >
                 <WhatsAppIcon size={16} />וואטסאפ
               </a>
-              <button className={`btn-outline ${resOpen ? "!border-plum-700" : ""}`} onClick={() => setResOpen((v) => !v)}>
-                <RefreshIcon size={16} />שינוי מועד
+              <button className={`btn-outline !px-2 ${resOpen ? "!border-plum-700" : ""}`} onClick={() => setResOpen((v) => !v)}>
+                <RefreshIcon size={16} />שינוי
               </button>
+              <a href={apptCalendarLink(sel)} target="_blank" rel="noopener" className="btn-outline !px-2" title="הוספה ליומן גוגל">
+                <CalendarIcon size={16} />יומן גוגל
+              </a>
             </div>
             {resOpen && (
               <div className="mt-3 rounded-3xl border border-line p-3.5">

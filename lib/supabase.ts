@@ -52,6 +52,27 @@ export function waLink(phone: string, text?: string) {
   return `https://wa.me/${intl}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 }
 
+// קישור "הוספה ליומן גוגל" עם האירוע מלא מראש (בלי OAuth)
+export function gcalLink(opts: {
+  title: string;
+  start: string | Date;
+  end: string | Date;
+  details?: string;
+  location?: string;
+}) {
+  const fmt = (d: string | Date) =>
+    new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: opts.title,
+    dates: `${fmt(opts.start)}/${fmt(opts.end)}`,
+    details: opts.details ?? "",
+    location: opts.location ?? "",
+    ctz: "Asia/Jerusalem",
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 // "₪120" או "₪120–180"
 export function priceLabel(min: number, max?: number | null) {
   const lo = Number(min);

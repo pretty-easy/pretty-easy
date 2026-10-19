@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { supabase, Service, Slot, Addon, priceLabel, durationLabel } from "@/lib/supabase";
+import { supabase, Service, Slot, Addon, priceLabel, durationLabel, gcalLink } from "@/lib/supabase";
 import { subscribeClientPush, pushResultMessage } from "@/lib/push";
 import BottomNav from "./nav";
 import {
@@ -55,7 +55,8 @@ function rememberToken(t: string) {
 
 type MyAppt = {
   cancel_token: string; service_name: string; price: number; price_max?: number | null;
-  addons?: { name: string }[]; starts_at: string; status: "pending" | "confirmed" | "cancelled"; is_past: boolean;
+  addons?: { name: string; duration_minutes?: number }[]; starts_at: string; ends_at?: string;
+  status: "pending" | "confirmed" | "cancelled"; is_past: boolean;
 };
 
 export default function BookingPage() {
@@ -275,7 +276,19 @@ export default function BookingPage() {
               </div>
               <div className="flex gap-2">
                 <Link href={`/cancel/${next.cancel_token}`} className="flex-1 rounded-full bg-white py-2.5 text-center text-[13px] font-bold text-plum-700">שינוי מועד</Link>
-                <Link href="/my" className="flex-1 rounded-full bg-white/12 py-2.5 text-center text-[13px] font-semibold text-white">כל התורים שלי</Link>
+                <a
+                  href={gcalLink({
+                    title: `תור ל${next.service_name} – Ariel Nails`,
+                    start: next.starts_at,
+                    end: next.ends_at ?? new Date(new Date(next.starts_at).getTime() + 60 * 60000),
+                    details: `${next.service_name}${next.addons && next.addons.length ? " + " + next.addons.map((x) => x.name).join(" + ") : ""}\nשינוי וביטול עד 24 שעות לפני`,
+                  })}
+                  target="_blank"
+                  rel="noopener"
+                  className="flex-1 rounded-full bg-white/12 py-2.5 text-center text-[13px] font-semibold text-white"
+                >
+                  הוספה ליומן
+                </a>
               </div>
             </div>
           ) : (
