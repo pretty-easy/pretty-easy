@@ -20,14 +20,14 @@ import {
 import { subscribeAdminPush, pushResultMessage } from "@/lib/push";
 import {
   BellIcon, CalendarIcon, UsersIcon, MessageIcon, SettingsIcon, LogoutIcon, CheckIcon, XIcon,
-  PhoneIcon, WhatsAppIcon, RefreshIcon, BrandIcon, ChevronLeft, ChevronRight, PlusIcon,
+  PhoneIcon, WhatsAppIcon, RefreshIcon, BrandIcon, ChevronLeft, ChevronRight, PlusIcon, SparkleIcon, ClockIcon,
 } from "@/lib/icons";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const TABS = ["יומן", "טיפולים", "תוספות", "שעות עבודה", "חסימות", "לקוחות", "הודעות"] as const;
 type Tab = (typeof TABS)[number];
 const SETTINGS_TABS: Tab[] = ["טיפולים", "תוספות", "שעות עבודה", "חסימות"];
-type NavKey = "יומן" | "לקוחות" | "הודעות" | "הגדרות";
+type NavKey = "סקירה" | "יומן" | "לקוחות" | "הודעות" | "הגדרות";
 
 function startOfWeek(d: Date) {
   const out = new Date(d);
@@ -88,11 +88,12 @@ function Login() {
 }
 
 function Dashboard() {
-  const [nav, setNav] = useState<NavKey>("יומן");
+  const [nav, setNav] = useState<NavKey>("סקירה");
   const [settingsTab, setSettingsTab] = useState<Tab>("טיפולים");
   const [pushMsg, setPushMsg] = useState<string | null>(null);
 
   const navItems: { key: NavKey; label: string; Icon: (p: { size?: number; strokeWidth?: number }) => JSX.Element }[] = [
+    { key: "סקירה", label: "סקירה", Icon: SparkleIcon },
     { key: "יומן", label: "יומן", Icon: CalendarIcon },
     { key: "לקוחות", label: "לקוחות", Icon: UsersIcon },
     { key: "הודעות", label: "הודעות", Icon: MessageIcon },
@@ -128,6 +129,7 @@ function Dashboard() {
       </header>
 
       <div className={nav === "יומן" ? "" : "px-4 pt-4"}>
+        {nav === "סקירה" && <OverviewTab goCalendar={() => setNav("יומן")} />}
         {nav === "יומן" && <CalendarTab />}
         {nav === "לקוחות" && <ClientsTab />}
         {nav === "הודעות" && <BroadcastTab />}
@@ -151,7 +153,7 @@ function Dashboard() {
           const on = nav === key;
           return (
             <button key={key} onClick={() => setNav(key)} aria-label={label}
-              className={`flex min-w-[64px] flex-col items-center gap-1 text-[11px] ${on ? "font-bold text-plum-900" : "font-semibold text-muted"}`}>
+              className={`flex min-w-[56px] flex-col items-center gap-1 text-[11px] ${on ? "font-bold text-plum-900" : "font-semibold text-muted"}`}>
               <span className={`flex h-8 w-11 items-center justify-center rounded-full transition ${on ? "bg-blush-100" : ""}`}>
                 <Icon size={20} strokeWidth={on ? 2.2 : 2} />
               </span>
@@ -2142,5 +2144,277 @@ function BroadcastTab() {
         </div>
       )}
     </section>
+  );
+}
+
+/* ===== סקירה (דשבורד) ===== */
+
+type PricedAppt = Appointment & { est: number; minutes: number };
+
+function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function ils(n: number) { return "₪" + Math.round(n).toLocaleString("he-IL"); }
+
+function OverviewTab({ goCalendar }: { goCalendar: () => void }) {
+  const [appts, setAppts] = useState<PricedAppt[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [hours, setHours] = useState<WorkingHour[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const from = addDays(startOfDay(new Date()), -90).toISOString();
+      const to = addDays(startOfDay(new Date()), 61).toISOString();
+      const [{ data: a }, { data: svc }, { data: c }, { data: wh }] = await Promise.all([
+        supabase.from("appointments").select("*, services(name)").gte("starts_at", from).lt("starts_at", to).order("starts_at"),
+        supabase.from("services").select("*"),
+        supabase.from("clients").select("*"),
+        supabase.from("working_hours").select("*"),
+      ]);
+      const services = (svc as Service[]) ?? [];
+      const priced = ((a as Appointment[]) ?? []).map((x) => {
+        const sv = services.find((s) => s.id === x.service_id);
+        const est = Number(sv?.price ?? 0) + (x.addons ?? []).reduce((t, ad) => t + Number(ad.price), 0);
+        const minutes = (new Date(x.ends_at).getTime() - new Date(x.starts_at).getTime()) / 60000;
+        return { ...x, est, minutes };
+      });
+      setAppts(priced);
+      setClients((c as Client[]) ?? []);
+      setHours((wh as WorkingHour[]) ?? []);
+      setLoading(false);
+    })();
+  }, []);
+
+  const now = new Date();
+  const today0 = startOfDay(now);
+  const weekStart = startOfWeek(now);
+  const weekEnd = addDays(weekStart, 7);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  const live = appts.filter((a) => a.status !== "cancelled");
+  const inRange = (list: PricedAppt[], s: Date, e: Date) => list.filter((a) => { const t = new Date(a.starts_at); return t >= s && t < e; });
+  const sum = (list: PricedAppt[]) => list.reduce((t, a) => t + a.est, 0);
+
+  const todayList = inRange(live, today0, addDays(today0, 1));
+  const weekList = inRange(live, weekStart, weekEnd);
+  const monthList = inRange(live, monthStart, monthEnd);
+  const prevMonthList = inRange(live, prevMonthStart, monthStart);
+
+  const done = (list: PricedAppt[]) => list.filter((a) => new Date(a.ends_at) <= now && a.status === "confirmed");
+  const ahead = (list: PricedAppt[]) => list.filter((a) => new Date(a.ends_at) > now);
+
+  const forecast30 = inRange(live, now, addDays(now, 30));
+  const forecastConfirmed = forecast30.filter((a) => a.status === "confirmed");
+  const forecastPending = forecast30.filter((a) => a.status === "pending");
+
+  const pendingAll = appts.filter((a) => a.status === "pending" && new Date(a.starts_at) > now);
+  const last30 = inRange(appts, addDays(today0, -30), now);
+  const cancelRate = last30.length ? Math.round((last30.filter((a) => a.status === "cancelled").length / last30.length) * 100) : 0;
+  const newClientsMonth = clients.filter((c) => new Date(c.created_at) >= monthStart).length;
+
+  // תפוסה השבוע: דקות תורים / דקות עבודה
+  const workMinutesWeek = hours.reduce((t, w) => {
+    const [sh, sm] = w.start_time.split(":").map(Number);
+    const [eh, em] = w.end_time.split(":").map(Number);
+    return t + (eh * 60 + em - (sh * 60 + sm));
+  }, 0);
+  const bookedMinutesWeek = weekList.reduce((t, a) => t + a.minutes, 0);
+  const occupancy = workMinutesWeek ? Math.min(100, Math.round((bookedMinutesWeek / workMinutesWeek) * 100)) : 0;
+
+  // 14 ימים: 7 אחורה + 7 קדימה
+  const barDays = Array.from({ length: 14 }, (_, i) => addDays(today0, i - 6));
+  const bars = barDays.map((d) => {
+    const list = inRange(live, d, addDays(d, 1));
+    return { d, value: sum(list), count: list.length, future: d > today0, isToday: d.getTime() === today0.getTime() };
+  });
+  const barMax = Math.max(1, ...bars.map((b) => b.value));
+
+  // טיפולים מובילים (90 יום)
+  const svcCounts: Record<string, { n: number; rev: number }> = {};
+  live.filter((a) => new Date(a.starts_at) <= now).forEach((a) => {
+    const k = a.services?.name ?? "אחר";
+    svcCounts[k] = { n: (svcCounts[k]?.n ?? 0) + 1, rev: (svcCounts[k]?.rev ?? 0) + a.est };
+  });
+  const topServices = Object.entries(svcCounts).sort((a, b) => b[1].n - a[1].n).slice(0, 4);
+  const topMax = Math.max(1, ...topServices.map(([, v]) => v.n));
+
+  // לקוחות לחזרה: ביקור אחרון לפני 6+ שבועות ובלי תור עתידי
+  const lastByPhone: Record<string, PricedAppt> = {};
+  const hasFuture = new Set<string>();
+  live.forEach((a) => {
+    const t = new Date(a.starts_at);
+    if (t > now) hasFuture.add(a.client_phone);
+    else if (!lastByPhone[a.client_phone] || new Date(lastByPhone[a.client_phone].starts_at) < t) lastByPhone[a.client_phone] = a;
+  });
+  const winBack = Object.values(lastByPhone)
+    .filter((a) => !hasFuture.has(a.client_phone) && now.getTime() - new Date(a.starts_at).getTime() > 42 * 864e5)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+    .slice(0, 5);
+
+  const nextToday = todayList.filter((a) => new Date(a.ends_at) > now).slice(0, 4);
+
+  if (loading) return <p className="py-10 text-center text-muted">טוען נתונים…</p>;
+
+  return (
+    <section className="flex flex-col gap-4 px-4 pt-4">
+      {/* הכנסות */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <StatTile label="היום" value={ils(sum(todayList))} sub={`${todayList.length} תורים`} />
+        <StatTile label="השבוע" value={ils(sum(weekList))} sub={`${ils(sum(done(weekList)))} בוצע · ${ils(sum(ahead(weekList)))} צפוי`} />
+        <StatTile label="החודש" value={ils(sum(monthList))} sub={prevMonthList.length ? `חודש שעבר ${ils(sum(prevMonthList))}` : `${monthList.length} תורים`} accent />
+      </div>
+
+      {/* צפי + תפוסה */}
+      <div className="card-dark flex items-center justify-between gap-4">
+        <div>
+          <div className="text-xs font-semibold opacity-80">צפי 30 יום קדימה</div>
+          <div className="mt-0.5 text-3xl font-extrabold leading-none">{ils(sum(forecastConfirmed))}</div>
+          <div className="mt-1.5 text-xs opacity-85">
+            {forecastConfirmed.length} מאושרים
+            {forecastPending.length > 0 && ` · עוד ${ils(sum(forecastPending))} ב-${forecastPending.length} ממתינים`}
+          </div>
+        </div>
+        <div className="flex flex-col items-center">
+          <div className="relative flex h-[72px] w-[72px] items-center justify-center rounded-full"
+            style={{ background: `conic-gradient(#D98E8A ${occupancy * 3.6}deg, rgba(255,255,255,0.14) 0)` }}>
+            <div className="flex h-[56px] w-[56px] flex-col items-center justify-center rounded-full bg-plum-700">
+              <span className="text-base font-extrabold leading-none">{occupancy}%</span>
+            </div>
+          </div>
+          <span className="mt-1 text-[11px] opacity-80">תפוסה השבוע</span>
+        </div>
+      </div>
+
+      {/* מדדים קטנים */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <MiniStat label="ממתינים לאישור" value={String(pendingAll.length)} warn={pendingAll.length > 0} onClick={goCalendar} />
+        <MiniStat label="לקוחות חדשות החודש" value={String(newClientsMonth)} />
+        <MiniStat label="ביטולים (30 יום)" value={`${cancelRate}%`} warn={cancelRate >= 20} />
+      </div>
+
+      {/* גרף 14 יום */}
+      <div className="card">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="section-title">הכנסות לפי יום</h3>
+          <div className="flex items-center gap-3 text-[11px] text-muted">
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-plum-700" />בוצע</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blush-300" />צפוי</span>
+          </div>
+        </div>
+        <div className="flex h-28 items-end gap-1.5">
+          {bars.map((b) => (
+            <div key={b.d.toISOString()} className="group relative flex flex-1 flex-col items-center justify-end" title={`${b.d.toLocaleDateString("he-IL")} · ${ils(b.value)} · ${b.count} תורים`}>
+              <div
+                className={`w-full rounded-t-[4px] transition ${b.future ? "bg-blush-300" : "bg-plum-700"} ${b.isToday ? "ring-2 ring-blush-500 ring-offset-1" : ""}`}
+                style={{ height: `${Math.max(b.value > 0 ? 6 : 2, (b.value / barMax) * 100)}%` }}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="mt-1.5 flex gap-1.5 text-[10px] text-muted">
+          {bars.map((b) => (
+            <div key={b.d.toISOString()} className={`flex-1 text-center ${b.isToday ? "font-extrabold text-plum-700" : ""}`}>
+              {DAY_NAMES[b.d.getDay()].slice(0, 1)}'
+            </div>
+          ))}
+        </div>
+        <div className="mt-0.5 flex justify-between text-[10px] text-muted">
+          <span>{bars[0].d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })}</span>
+          <span>היום</span>
+          <span>{bars[13].d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })}</span>
+        </div>
+      </div>
+
+      {/* היום */}
+      {nextToday.length > 0 && (
+        <div className="card">
+          <div className="mb-2.5 flex items-center justify-between">
+            <h3 className="section-title">הבאים בתור היום</h3>
+            <button className="text-xs font-bold text-blush-600" onClick={goCalendar}>ליומן ›</button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {nextToday.map((a) => (
+              <div key={a.id} className="flex items-center gap-3 text-sm">
+                <span className="flex items-center gap-1 rounded-xl bg-blush-50 px-2 py-1 text-xs font-bold text-plum-700"><ClockIcon size={12} />{fmtTime(a.starts_at)}</span>
+                <span className="min-w-0 flex-1 truncate"><b>{a.client_name}</b> · {a.services?.name}</span>
+                {a.status === "pending" ? <span className="badge-wait">ממתין</span> : <span className="text-xs font-bold text-plum-500">{ils(a.est)}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* טיפולים מובילים */}
+      {topServices.length > 0 && (
+        <div className="card">
+          <h3 className="section-title mb-3">הטיפולים המבוקשים (90 יום)</h3>
+          <div className="flex flex-col gap-2.5">
+            {topServices.map(([name, v]) => (
+              <div key={name} className="text-sm">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="font-semibold">{name}</span>
+                  <span className="text-xs text-muted">{v.n} תורים · {ils(v.rev)}</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-blush-50">
+                  <div className="h-2 rounded-full bg-plum-700" style={{ width: `${(v.n / topMax) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* לקוחות לחזרה */}
+      {winBack.length > 0 && (
+        <div className="card">
+          <h3 className="section-title">שווה לפנות אליהן</h3>
+          <p className="mb-3 text-xs text-muted">ביקור אחרון לפני יותר מ-6 שבועות, ועדיין בלי תור חדש</p>
+          <div className="flex flex-col gap-2">
+            {winBack.map((a) => {
+              const weeks = Math.round((now.getTime() - new Date(a.starts_at).getTime()) / (7 * 864e5));
+              return (
+                <div key={a.client_phone} className="flex items-center justify-between gap-2 text-sm">
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold">{a.client_name}</div>
+                    <div className="text-xs text-muted">{a.services?.name} · לפני {weeks} שבועות</div>
+                  </div>
+                  <a
+                    href={waLink(a.client_phone, `היי ${a.client_name.split(" ")[0]} 💅 עבר זמן מהביקור האחרון – בא לך לרענן את הציפורניים? אפשר לקבוע כאן: https://pretty-easy.vercel.app`)}
+                    target="_blank" rel="noopener"
+                    className="flex shrink-0 items-center gap-1 rounded-full bg-success px-3 py-1.5 text-xs font-bold text-white"
+                  >
+                    <WhatsAppIcon size={14} />וואטסאפ
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <p className="pb-2 text-center text-[11px] text-muted">ההכנסות מחושבות לפי מחיר הבסיס של כל טיפול + תוספות (ללא טווח)</p>
+    </section>
+  );
+}
+
+function StatTile({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
+  return (
+    <div className={`rounded-3xl border px-3 py-3.5 ${accent ? "border-plum-700 bg-white shadow-card" : "border-line bg-white"}`}>
+      <div className="text-[11px] font-semibold text-muted">{label}</div>
+      <div className="mt-0.5 text-xl font-extrabold leading-tight text-plum-700">{value}</div>
+      {sub && <div className="mt-1 text-[10px] leading-snug text-muted">{sub}</div>}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, warn, onClick }: { label: string; value: string; warn?: boolean; onClick?: () => void }) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag onClick={onClick} className={`rounded-2xl border px-2.5 py-3 text-center ${warn ? "border-[#F3DFAF] bg-[#FFF8E8]" : "border-line bg-white"}`}>
+      <div className={`text-xl font-extrabold leading-none ${warn ? "text-[#8A5A12]" : "text-plum-700"}`}>{value}</div>
+      <div className="mt-1 text-[10px] font-medium text-muted">{label}</div>
+    </Tag>
   );
 }
