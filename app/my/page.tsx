@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { subscribeClientPush, pushResultMessage } from "@/lib/push";
+import BottomNav from "../nav";
+import { BellIcon, EditIcon, PlusIcon } from "@/lib/icons";
 
 type MyAppt = {
   cancel_token: string;
@@ -16,192 +17,147 @@ type MyAppt = {
   status: "pending" | "confirmed" | "cancelled";
   is_past: boolean;
 };
+type MyData = { client_name: string; appointments: MyAppt[] };
+
+const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+const MONTHS_SHORT = ["ינו'", "פבר'", "מרץ", "אפר'", "מאי", "יוני", "יולי", "אוג'", "ספט'", "אוק'", "נוב'", "דצמ'"];
 
 function apptPrice(a: MyAppt) {
   const lo = Number(a.price) + (a.addons ?? []).reduce((s, x) => s + Number(x.price), 0);
-  const hi =
-    Number(a.price_max ?? a.price) +
-    (a.addons ?? []).reduce((s, x) => s + Number(x.price_max ?? x.price), 0);
+  const hi = Number(a.price_max ?? a.price) + (a.addons ?? []).reduce((s, x) => s + Number(x.price_max ?? x.price), 0);
   return hi > lo ? `₪${lo}–${hi}` : `₪${lo}`;
 }
-
 function apptTitle(a: MyAppt) {
   const names = (a.addons ?? []).map((x) => x.name);
   return names.length ? `${a.service_name} + ${names.join(" + ")}` : a.service_name;
-}
-
-type MyData = { client_name: string; appointments: MyAppt[] };
-
-const STATUS_BADGE: Record<MyAppt["status"], { text: string; cls: string }> = {
-  pending: { text: "⏳ ממתין לאישור", cls: "bg-amber-100 text-amber-800" },
-  confirmed: { text: "✓ מאושר", cls: "bg-green-100 text-green-800" },
-  cancelled: { text: "בוטל", cls: "bg-gray-100 text-gray-500" },
-};
-
-function fmt(iso: string) {
-  return new Date(iso).toLocaleString("he-IL", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export default function MyPage() {
   const [data, setData] = useState<MyData | null | "loading" | "no-token">("loading");
   const [pushMsg, setPushMsg] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [pushOn, setPushOn] = useState(false);
 
   useEffect(() => {
     let t: string | null = null;
-    try {
-      t = localStorage.getItem("pe_last_token");
-    } catch {}
-    if (!t) {
-      setData("no-token");
-      return;
-    }
+    try { t = localStorage.getItem("pe_last_token"); } catch {}
+    if (!t) { setData("no-token"); return; }
     setToken(t);
-    supabase
-      .rpc("get_my_appointments", { p_token: t })
-      .then(({ data }) => setData((data as MyData) ?? "no-token"));
+    supabase.rpc("get_my_appointments", { p_token: t }).then(({ data }) => setData((data as MyData) ?? "no-token"));
+    try {
+      if ("Notification" in window && Notification.permission === "granted") setPushOn(true);
+    } catch {}
   }, []);
 
-  const { upcoming, past, visits, favorite } = useMemo(() => {
+  const { upcoming, past, favorite, since } = useMemo(() => {
     if (!data || data === "loading" || data === "no-token")
-      return { upcoming: [], past: [], visits: 0, favorite: null as string | null };
+      return { upcoming: [] as MyAppt[], past: [] as MyAppt[], favorite: null as string | null, since: null as Date | null };
     const appts = data.appointments;
-    const upcoming = appts
-      .filter((a) => !a.is_past && a.status !== "cancelled")
-      .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+    const upcoming = appts.filter((a) => !a.is_past && a.status !== "cancelled").sort((a, b) => a.starts_at.localeCompare(b.starts_at));
     const past = appts.filter((a) => a.is_past && a.status !== "cancelled");
     const counts: Record<string, number> = {};
     past.forEach((a) => (counts[a.service_name] = (counts[a.service_name] ?? 0) + 1));
-    const favorite =
-      Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-    return { upcoming, past, visits: past.length, favorite };
+    const favorite = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const first = [...appts].sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
+    return { upcoming, past, favorite, since: first ? new Date(first.starts_at) : null };
   }, [data]);
 
+  const ready = data && data !== "loading" && data !== "no-token";
+
   return (
-    <main className="mx-auto max-w-md px-4 pb-16">
-      <header className="flex flex-col items-center pt-6 pb-4">
-        <Link href="/">
-          <Image src="/logo.png" alt="Pretty Easy" width={180} height={54} priority />
-        </Link>
+    <main className="mx-auto min-h-[100svh] max-w-md pb-28">
+      <header className="flex items-center gap-3.5 border-b border-line bg-white px-6 pb-5 pt-14">
+        <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-blush-100 text-2xl font-extrabold text-plum-700">
+          {ready ? data.client_name.trim().charAt(0) : "👤"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xl font-extrabold leading-tight">{ready ? data.client_name : "האזור האישי שלי"}</div>
+          <div className="mt-0.5 text-[13px] text-muted">
+            {ready
+              ? `${since ? `לקוחה מאז ${MONTHS_SHORT[since.getMonth()]} ${since.getFullYear()} · ` : ""}${past.length} ביקורים`
+              : "התורים וההיסטוריה שלך"}
+          </div>
+        </div>
+        {ready && pushOn && (
+          <span className="badge-ok whitespace-nowrap"><BellIcon size={12} strokeWidth={2.5} />התראות פעילות</span>
+        )}
       </header>
 
-      <h1 className="mb-4 text-center text-xl font-bold">
-        {data && data !== "loading" && data !== "no-token"
-          ? `היי ${data.client_name} 👋`
-          : "האזור האישי שלי"}
-      </h1>
-
-      {data === "loading" && <p className="text-center text-plum-500">טוען…</p>}
+      {data === "loading" && <p className="p-6 text-center text-muted">טוען…</p>}
 
       {data === "no-token" && (
-        <div className="card text-center">
-          <p className="mb-1 font-semibold">עוד לא קבעת תור מהמכשיר הזה</p>
-          <p className="mb-4 text-sm text-plum-500">
-            אחרי התור הראשון, כל התורים וההיסטוריה שלך יופיעו כאן אוטומטית
-          </p>
-          <Link href="/" className="btn-primary inline-block">
-            קביעת תור ראשון ✨
-          </Link>
+        <div className="card mx-6 mt-6 text-center">
+          <p className="font-bold">עוד לא קבעת תור מהמכשיר הזה</p>
+          <p className="mt-1 text-sm text-muted">אחרי התור הראשון, כל התורים וההיסטוריה שלך יופיעו כאן אוטומטית</p>
+          <Link href="/?book=1" className="btn-primary mt-4 inline-block">קביעת תור ראשון</Link>
         </div>
       )}
 
-      {data && data !== "loading" && data !== "no-token" && (
-        <div className="flex flex-col gap-4">
-          {/* סטטיסטיקה */}
-          {visits > 0 && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="card py-4 text-center">
-                <div className="text-2xl font-bold text-blush-600">{visits}</div>
-                <div className="text-xs text-plum-500">ביקורים</div>
-              </div>
-              <div className="card py-4 text-center">
-                <div className="truncate text-lg font-bold">{favorite ?? "–"}</div>
-                <div className="text-xs text-plum-500">הטיפול הקבוע שלך</div>
-              </div>
-            </div>
-          )}
-
-          {/* תורים קרובים */}
+      {ready && (
+        <div className="flex flex-col gap-5 px-6 pt-5">
           <section>
-            <h2 className="mb-2 font-bold">התורים הקרובים שלך</h2>
+            <div className="mb-2.5 flex items-center justify-between">
+              <h2 className="section-title">התורים הקרובים</h2>
+              <Link href="/?book=1" className="flex items-center gap-1 text-xs font-bold text-blush-600"><PlusIcon size={14} strokeWidth={2.5} />תור חדש</Link>
+            </div>
             {upcoming.length === 0 ? (
               <div className="card text-center text-sm">
-                <p className="mb-3 text-plum-500">אין תור קרוב</p>
-                <Link href="/" className="btn-primary inline-block">
-                  קבעי תור ✨
-                </Link>
+                <p className="text-muted">אין תור קרוב</p>
+                <Link href="/?book=1" className="btn-primary mt-3 inline-block">קבעי תור</Link>
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
-                {upcoming.map((a) => (
-                  <div key={a.cancel_token} className="card">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="font-semibold">{apptTitle(a)}</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[a.status].cls}`}
-                      >
-                        {STATUS_BADGE[a.status].text}
-                      </span>
+              <div className="flex flex-col gap-2.5">
+                {upcoming.map((a, i) => {
+                  const d = new Date(a.starts_at);
+                  const first = i === 0;
+                  return (
+                    <div key={a.cancel_token} className={`card flex items-center gap-3.5 !px-4.5 !py-4 ${first ? "shadow-card" : "shadow-none"}`}>
+                      <div className={`w-[54px] shrink-0 rounded-2xl py-2 text-center ${first ? "bg-plum-700 text-white" : "bg-blush-50 text-plum-700"}`}>
+                        <div className={`text-[11px] ${first ? "opacity-85" : "text-muted"}`}>{DAY_NAMES[d.getDay()]}</div>
+                        <div className="text-xl font-extrabold leading-none">{d.getDate()}</div>
+                        <div className={`text-[10px] ${first ? "opacity-85" : "text-muted"}`}>{MONTHS_SHORT[d.getMonth()]}</div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[15px] font-extrabold">{apptTitle(a)}</div>
+                        <div className="text-[13px] text-muted">{d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })} · {apptPrice(a)}</div>
+                        <div className="mt-1.5">
+                          {a.status === "confirmed" ? <span className="badge-ok">מאושר ✓</span> : <span className="badge-wait">ממתין לאישור</span>}
+                        </div>
+                      </div>
+                      <Link href={`/cancel/${a.cancel_token}`} aria-label="שינוי או ביטול" className="icon-btn !h-10 !w-10 !rounded-xl text-plum-700">
+                        <EditIcon size={18} />
+                      </Link>
                     </div>
-                    <p className="mb-3 text-sm text-plum-500">{fmt(a.starts_at)}</p>
-                    <Link
-                      href={`/cancel/${a.cancel_token}`}
-                      className="btn-ghost inline-block border border-blush-200 text-sm"
-                    >
-                      שינוי או ביטול
-                    </Link>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
 
-          {/* תזכורות */}
-          {token && (
+          {token && !pushOn && (
             <div>
-              <button
-                className="btn-ghost w-full border border-blush-200"
-                disabled={pushMsg === "ההתראות הופעלו ✓"}
-                onClick={async () => {
-                  const r = await subscribeClientPush(token);
-                  setPushMsg(pushResultMessage(r));
-                }}
-              >
-                🔔 הפעלת עדכונים ותזכורות
+              <button className="btn-outline w-full !rounded-full !py-3.5" disabled={pushMsg === "ההתראות הופעלו ✓"}
+                onClick={async () => { const r = await subscribeClientPush(token); setPushMsg(pushResultMessage(r)); if (r === "granted") setPushOn(true); }}>
+                <BellIcon size={18} />הפעלת עדכונים ותזכורות
               </button>
-              {pushMsg && (
-                <p className="mt-2 text-center text-xs text-plum-500">{pushMsg}</p>
-              )}
+              {pushMsg && <p className="mt-2 text-center text-xs text-muted">{pushMsg}</p>}
             </div>
           )}
 
-          {/* היסטוריה */}
           {past.length > 0 && (
             <section>
-              <h2 className="mb-2 font-bold">היסטוריית ביקורים</h2>
-              <div className="card divide-y divide-blush-100 !p-0 text-sm">
+              <div className="mb-2.5 flex items-center justify-between">
+                <h2 className="section-title">היסטוריה</h2>
+                {favorite && <span className="text-xs text-muted">הטיפול הקבוע: <b className="text-plum-700">{favorite}</b></span>}
+              </div>
+              <div className="card divide-y divide-blush-50 !p-0 text-sm">
                 {past.map((a) => (
-                  <div
-                    key={a.cancel_token}
-                    className="flex items-center justify-between px-4 py-3"
-                  >
+                  <div key={a.cancel_token} className="flex items-center justify-between px-4.5 py-3.5" style={{ paddingInline: 18 }}>
                     <div>
-                      <div className="font-medium">{apptTitle(a)}</div>
-                      <div className="text-xs text-plum-500">
-                        {new Date(a.starts_at).toLocaleDateString("he-IL", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })}
-                      </div>
+                      <div className="font-bold">{apptTitle(a)}</div>
+                      <div className="text-xs text-muted">{new Date(a.starts_at).toLocaleDateString("he-IL", { day: "numeric", month: "long" })}</div>
                     </div>
-                    <span className="text-plum-500">{apptPrice(a)}</span>
+                    <span className="font-bold text-plum-500">{apptPrice(a)}</span>
                   </div>
                 ))}
               </div>
@@ -209,6 +165,7 @@ export default function MyPage() {
           )}
         </div>
       )}
+      <BottomNav active="my" />
     </main>
   );
 }

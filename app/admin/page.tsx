@@ -17,10 +17,16 @@ import {
   waLink,
 } from "@/lib/supabase";
 import { subscribeAdminPush, pushResultMessage } from "@/lib/push";
+import {
+  BellIcon, CalendarIcon, UsersIcon, MessageIcon, SettingsIcon, LogoutIcon, CheckIcon, XIcon,
+  PhoneIcon, WhatsAppIcon, RefreshIcon, BrandIcon, ChevronLeft, ChevronRight, PlusIcon,
+} from "@/lib/icons";
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const TABS = ["יומן", "טיפולים", "תוספות", "שעות עבודה", "חסימות", "לקוחות", "הודעות"] as const;
 type Tab = (typeof TABS)[number];
+const SETTINGS_TABS: Tab[] = ["טיפולים", "תוספות", "שעות עבודה", "חסימות"];
+type NavKey = "יומן" | "לקוחות" | "הודעות" | "הגדרות";
 
 function startOfWeek(d: Date) {
   const out = new Date(d);
@@ -62,84 +68,97 @@ function Login() {
   }
 
   return (
-    <main className="mx-auto flex max-w-sm flex-col items-center px-4 pt-16">
-      <Image src="/logo.png" alt="Pretty Easy" width={200} height={60} className="mb-8" />
-      <form onSubmit={signIn} className="card flex w-full flex-col gap-4">
-        <h1 className="text-center text-xl font-bold">כניסת מנהלת</h1>
-        <input
-          className="input"
-          type="email"
-          placeholder="אימייל"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          dir="ltr"
-        />
-        <input
-          className="input"
-          type="password"
-          placeholder="סיסמה"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          dir="ltr"
-        />
-        {error && <p className="text-sm text-red-700">{error}</p>}
-        <button className="btn-primary" disabled={busy}>
-          {busy ? "מתחברת…" : "כניסה"}
-        </button>
+    <main className="mx-auto flex min-h-[100svh] max-w-sm flex-col items-center justify-center px-6">
+      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-[22px] bg-plum-900 text-blush-400 shadow-plum">
+        <BrandIcon size={32} />
+      </div>
+      <form onSubmit={signIn} className="card flex w-full flex-col gap-4 shadow-card">
+        <div className="text-center">
+          <h1 className="text-xl font-extrabold">כניסת מנהלת</h1>
+          <p className="mt-1 text-sm text-muted">Pretty Easy · ניהול תורים</p>
+        </div>
+        <input className="input" type="email" placeholder="אימייל" value={email} onChange={(e) => setEmail(e.target.value)} required dir="ltr" />
+        <input className="input" type="password" placeholder="סיסמה" value={password} onChange={(e) => setPassword(e.target.value)} required dir="ltr" />
+        {error && <p className="text-sm text-danger">{error}</p>}
+        <button className="btn-primary" disabled={busy}>{busy ? "מתחברת…" : "כניסה"}</button>
       </form>
     </main>
   );
 }
 
 function Dashboard() {
-  const [tab, setTab] = useState<Tab>("יומן");
+  const [nav, setNav] = useState<NavKey>("יומן");
+  const [settingsTab, setSettingsTab] = useState<Tab>("טיפולים");
   const [pushMsg, setPushMsg] = useState<string | null>(null);
 
+  const navItems: { key: NavKey; label: string; Icon: (p: { size?: number; strokeWidth?: number }) => JSX.Element }[] = [
+    { key: "יומן", label: "יומן", Icon: CalendarIcon },
+    { key: "לקוחות", label: "לקוחות", Icon: UsersIcon },
+    { key: "הודעות", label: "הודעות", Icon: MessageIcon },
+    { key: "הגדרות", label: "הגדרות", Icon: SettingsIcon },
+  ];
+
   return (
-    <main className="mx-auto max-w-2xl px-4 pb-16">
-      <header className="flex items-center justify-between py-4">
-        <Image src="/logo.png" alt="Pretty Easy" width={140} height={42} />
-        <div className="flex items-center gap-1">
-          <button
-            className="btn-ghost text-sm"
-            title="קבלת התראה על כל תור חדש"
-            onClick={async () => {
-              const r = await subscribeAdminPush();
-              setPushMsg(pushResultMessage(r));
-            }}
-          >
-            🔔
-          </button>
-          <button className="btn-ghost text-sm" onClick={() => supabase.auth.signOut()}>
-            יציאה
-          </button>
+    <main className="mx-auto min-h-[100svh] max-w-2xl bg-[#F4EFF2] pb-28">
+      <header className={`bg-plum-900 px-5 pt-12 text-white ${nav === "יומן" ? "pb-2" : "rounded-b-[28px] pb-5 shadow-plum"}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-blush-400"><BrandIcon size={20} /></span>
+            <div>
+              <div className="text-[11px] font-medium opacity-70">Pretty Easy</div>
+              <div className="text-base font-extrabold leading-tight">{nav}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="הפעלת התראות על תורים חדשים"
+              title="קבלת התראה על כל תור חדש"
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"
+              onClick={async () => { const r = await subscribeAdminPush(); setPushMsg(pushResultMessage(r)); }}
+            >
+              <BellIcon size={18} />
+            </button>
+            <button aria-label="יציאה" className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10" onClick={() => supabase.auth.signOut()}>
+              <LogoutIcon size={18} />
+            </button>
+          </div>
         </div>
+        {pushMsg && <p className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-center text-xs">{pushMsg}</p>}
       </header>
-      {pushMsg && (
-        <p className="mb-3 rounded-xl bg-blush-100 p-2 text-center text-xs">{pushMsg}</p>
-      )}
 
-      <nav className="-mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-1">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`chip whitespace-nowrap ${tab === t ? "chip-active" : ""}`}
-          >
-            {t}
-          </button>
-        ))}
+      <div className={nav === "יומן" ? "" : "px-4 pt-4"}>
+        {nav === "יומן" && <CalendarTab />}
+        {nav === "לקוחות" && <ClientsTab />}
+        {nav === "הודעות" && <BroadcastTab />}
+        {nav === "הגדרות" && (
+          <>
+            <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1">
+              {SETTINGS_TABS.map((t) => (
+                <button key={t} onClick={() => setSettingsTab(t)} className={`chip whitespace-nowrap ${settingsTab === t ? "chip-active" : ""}`}>{t}</button>
+              ))}
+            </div>
+            {settingsTab === "טיפולים" && <ServicesTab />}
+            {settingsTab === "תוספות" && <AddonsTab />}
+            {settingsTab === "שעות עבודה" && <HoursTab />}
+            {settingsTab === "חסימות" && <BlockedTab />}
+          </>
+        )}
+      </div>
+
+      <nav className="bottom-nav mx-auto max-w-2xl">
+        {navItems.map(({ key, label, Icon }) => {
+          const on = nav === key;
+          return (
+            <button key={key} onClick={() => setNav(key)} aria-label={label}
+              className={`flex min-w-[64px] flex-col items-center gap-1 text-[11px] ${on ? "font-bold text-plum-900" : "font-semibold text-muted"}`}>
+              <span className={`flex h-8 w-11 items-center justify-center rounded-full transition ${on ? "bg-blush-100" : ""}`}>
+                <Icon size={20} strokeWidth={on ? 2.2 : 2} />
+              </span>
+              {label}
+            </button>
+          );
+        })}
       </nav>
-
-      {tab === "יומן" && <CalendarTab />}
-      {tab === "טיפולים" && <ServicesTab />}
-      {tab === "תוספות" && <AddonsTab />}
-      {tab === "שעות עבודה" && <HoursTab />}
-      {tab === "חסימות" && <BlockedTab />}
-      {tab === "לקוחות" && <ClientsTab />}
-      {tab === "הודעות" && <BroadcastTab />}
     </main>
   );
 }
@@ -217,6 +236,7 @@ function CalendarTab() {
   });
   const [view, setView] = useState<"day" | "week">("day");
   const [appts, setAppts] = useState<Appointment[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [blocks, setBlocks] = useState<BlockedTime[]>([]);
   const [wbreaks, setWbreaks] = useState<WeeklyBreak[]>([]);
   const [pending, setPending] = useState<Appointment[]>([]);
@@ -290,6 +310,7 @@ function CalendarTab() {
   }, [load]);
 
   useEffect(() => {
+    supabase.from("services").select("*").then(({ data }) => setServices((data as Service[]) ?? []));
     supabase
       .from("weekly_breaks")
       .select("*")
@@ -370,47 +391,89 @@ function CalendarTab() {
 
   return (
     <section>
+      {/* כותרת כהה: ניווט שבועי + פס ימים + סיכום */}
+      <div className="rounded-b-[28px] bg-plum-900 px-5 pb-4 pt-3 text-white shadow-plum">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <button aria-label="שבוע קודם" className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10" onClick={() => moveWeek(-1)}><ChevronRight size={18} /></button>
+            <button aria-label="שבוע הבא" className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10" onClick={() => moveWeek(1)}><ChevronLeft size={18} /></button>
+            <button className="mr-1 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold" onClick={() => { const t = new Date(); t.setHours(0, 0, 0, 0); setSelectedDay(t); setWeekStart(startOfWeek(t)); }}>היום</button>
+          </div>
+          <div>
+            <div className="text-[11px] opacity-70">{view === "day" ? `יום ${DAY_NAMES[selectedDay.getDay()]}` : "שבוע"}</div>
+            <div className="text-lg font-extrabold leading-tight">
+              {view === "day"
+                ? selectedDay.toLocaleDateString("he-IL", { day: "numeric", month: "long" })
+                : `${days[0].toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })} – ${days[6].toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })}`}
+            </div>
+          </div>
+          <div className="flex rounded-xl bg-white/10 p-[3px] text-xs font-bold">
+            <button className={`rounded-[9px] px-3 py-1.5 ${view === "day" ? "bg-white text-plum-900" : "opacity-85"}`} onClick={() => setView("day")}>יום</button>
+            <button className={`rounded-[9px] px-3 py-1.5 ${view === "week" ? "bg-white text-plum-900" : "opacity-85"}`} onClick={() => setView("week")}>שבוע</button>
+          </div>
+        </div>
+
+        {view === "day" && (
+          <div className="mt-4 grid grid-cols-7 gap-1">
+            {days.map((d) => {
+              const isSel = d.toDateString() === selectedDay.toDateString();
+              const isToday = d.toDateString() === now.toDateString();
+              const count = appts.filter((a) => new Date(a.starts_at).toDateString() === d.toDateString()).length;
+              return (
+                <button key={d.toISOString()} onClick={() => setSelectedDay(new Date(d))}
+                  className={`flex flex-col items-center rounded-xl py-1.5 transition ${isSel ? "bg-white text-plum-900" : isToday ? "bg-white/15" : "opacity-75"}`}>
+                  <span className="text-[10px]">{DAY_NAMES[d.getDay()].slice(0, 3)}'</span>
+                  <span className="text-[15px] font-extrabold leading-tight">{d.getDate()}</span>
+                  <span className={`h-1 w-1 rounded-full ${count > 0 ? (isSel ? "bg-plum-900" : "bg-blush-400") : "bg-transparent"}`} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {(() => {
+          const dayList = view === "day"
+            ? appts.filter((a) => new Date(a.starts_at).toDateString() === selectedDay.toDateString())
+            : appts;
+          const expected = dayList.reduce((sum, a) => {
+            const svc = services.find((x) => x.id === a.service_id);
+            const base = Number(svc?.price ?? 0);
+            const extra = (a.addons ?? []).reduce((t, x) => t + Number(x.price), 0);
+            return sum + base + extra;
+          }, 0);
+          return (
+            <div className="mt-3.5 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-white/10 px-2.5 py-1 font-semibold">{dayList.length} תורים</span>
+              {expected > 0 && <span className="rounded-full bg-white/10 px-2.5 py-1 font-semibold">₪{expected.toLocaleString()} צפוי</span>}
+              {pending.length > 0 && <span className="rounded-full bg-[#F2B544] px-2.5 py-1 font-extrabold text-plum-900">{pending.length} ממתינים</span>}
+            </div>
+          );
+        })()}
+      </div>
+
       {/* ממתינים לאישור */}
       {pending.length > 0 && (
-        <div className="mb-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
-          <h3 className="mb-2 font-bold text-amber-900">
-            ⏳ {pending.length} {pending.length === 1 ? "תור ממתין" : "תורים ממתינים"} לאישור
+        <div className="mx-4 mt-4 rounded-3xl border border-[#F3DFAF] bg-[#FFF8E8] p-4">
+          <h3 className="mb-2.5 text-sm font-extrabold text-[#8A5A12]">
+            {pending.length} {pending.length === 1 ? "תור ממתין" : "תורים ממתינים"} לאישור
           </h3>
           <div className="flex flex-col gap-2">
             {pending.map((a) => (
-              <div
-                key={a.id}
-                className="flex items-center justify-between gap-2 rounded-xl bg-white p-3 text-sm"
-              >
-                <div className="min-w-0">
-                  <div className="font-semibold">
+              <div key={a.id} className="flex items-center justify-between gap-2 rounded-2xl bg-white p-3 text-sm">
+                <button className="min-w-0 text-right" onClick={() => setSel(a)}>
+                  <div className="truncate font-extrabold">
                     {a.client_name} · {a.services?.name}
-                    {a.addons && a.addons.length > 0 && (
-                      <span className="font-normal text-plum-500">
-                        {" "}+ {a.addons.map((x) => x.name).join(" + ")}
-                      </span>
-                    )}
+                    {a.addons && a.addons.length > 0 && <span className="font-normal text-muted"> + {a.addons.map((x) => x.name).join(" + ")}</span>}
                   </div>
-                  <div className="text-xs text-plum-500">
-                    יום {DAY_NAMES[new Date(a.starts_at).getDay()]}{" "}
-                    {new Date(a.starts_at).toLocaleDateString("he-IL")} · {fmtTime(a.starts_at)}
+                  <div className="text-xs text-muted">
+                    יום {DAY_NAMES[new Date(a.starts_at).getDay()]} {new Date(a.starts_at).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })} · {fmtTime(a.starts_at)}
                   </div>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    className="rounded-full bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-green-500"
-                    disabled={busy}
-                    onClick={() => setStatus(a.id, "confirmed")}
-                  >
-                    ✓ אישור
+                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button className="flex items-center gap-1 rounded-full bg-success px-3 py-1.5 text-xs font-extrabold text-white" disabled={busy} onClick={() => setStatus(a.id, "confirmed")}>
+                    <CheckIcon size={14} strokeWidth={3} />אישור
                   </button>
-                  <button
-                    className="btn-ghost !px-2 text-xs text-red-700"
-                    disabled={busy}
-                    onClick={() => setStatus(a.id, "cancelled")}
-                  >
-                    דחייה
-                  </button>
+                  <button className="btn-ghost !px-2 text-xs text-danger" disabled={busy} onClick={() => setStatus(a.id, "cancelled")}>דחייה</button>
                 </div>
               </div>
             ))}
@@ -418,81 +481,8 @@ function CalendarTab() {
         </div>
       )}
 
-      {/* ניווט */}
-      <div className="mb-2 flex items-center justify-between">
-        <button className="btn-ghost !px-3" onClick={() => moveWeek(-1)}>
-          ‹
-        </button>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">
-            {days[0].toLocaleDateString("he-IL", { day: "numeric", month: "short" })} –{" "}
-            {days[6].toLocaleDateString("he-IL", { day: "numeric", month: "short" })}
-          </span>
-          <button
-            className="btn-ghost !py-1 text-xs"
-            onClick={() => {
-              const t = new Date();
-              t.setHours(0, 0, 0, 0);
-              setSelectedDay(t);
-              setWeekStart(startOfWeek(t));
-            }}
-          >
-            היום
-          </button>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="flex rounded-full border border-blush-200 p-0.5 text-xs">
-            <button
-              className={`rounded-full px-3 py-1 ${view === "day" ? "bg-plum-700 text-white" : ""}`}
-              onClick={() => setView("day")}
-            >
-              יום
-            </button>
-            <button
-              className={`rounded-full px-3 py-1 ${view === "week" ? "bg-plum-700 text-white" : ""}`}
-              onClick={() => setView("week")}
-            >
-              שבוע
-            </button>
-          </div>
-          <button className="btn-ghost !px-3" onClick={() => moveWeek(1)}>
-            ›
-          </button>
-        </div>
-      </div>
-
-      {/* פס ימים (בתצוגת יום) */}
-      {view === "day" && (
-        <div className="mb-3 grid grid-cols-7 gap-1">
-          {days.map((d) => {
-            const isSel = d.toDateString() === selectedDay.toDateString();
-            const isToday = d.toDateString() === now.toDateString();
-            const count = appts.filter(
-              (a) => new Date(a.starts_at).toDateString() === d.toDateString()
-            ).length;
-            return (
-              <button
-                key={d.toISOString()}
-                onClick={() => setSelectedDay(new Date(d))}
-                className={`flex flex-col items-center rounded-xl py-1.5 transition ${
-                  isSel ? "bg-plum-700 text-white" : isToday ? "bg-blush-100" : "bg-white"
-                }`}
-              >
-                <span className="text-[10px]">{DAY_NAMES[d.getDay()].slice(0, 3)}'</span>
-                <span className="text-base font-bold leading-tight">{d.getDate()}</span>
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    count > 0 ? (isSel ? "bg-white" : "bg-blush-400") : "bg-transparent"
-                  }`}
-                />
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {/* רשת השעות */}
-      <div className="card overflow-x-auto !p-0">
+      <div className="card mx-4 mt-4 overflow-x-auto !rounded-3xl !p-0">
         <div className="flex min-w-fit" dir="rtl">
           {/* עמודת שעות */}
           <div className="w-12 shrink-0 border-l border-blush-100 text-left">
@@ -633,10 +623,10 @@ function CalendarTab() {
                           e.stopPropagation();
                           setSel(a);
                         }}
-                        className={`absolute inset-x-0.5 z-10 overflow-hidden rounded-lg px-1.5 py-0.5 text-right text-[11px] leading-tight transition active:scale-[0.98] ${
+                        className={`absolute inset-x-0.5 z-10 overflow-hidden rounded-xl px-2 py-1 text-right text-[11px] leading-tight transition active:scale-[0.98] ${
                           isPending
-                            ? "border-2 border-dashed border-amber-400 bg-amber-50 text-amber-900"
-                            : "bg-plum-700 text-white shadow-sm"
+                            ? "border-[1.5px] border-dashed border-[#E0A93A] bg-[#FFF8E8] text-[#6B4A0F]"
+                            : "border-r-4 border-plum-700 bg-white text-ink shadow-soft"
                         }`}
                         style={{ top, height }}
                       >
@@ -675,10 +665,11 @@ function CalendarTab() {
           onClick={() => setBlockDraft(null)}
         >
           <div
-            className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+            className="w-full max-w-md rounded-t-[32px] bg-white px-6 pb-9 pt-3 sm:rounded-[32px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-1 text-lg font-bold">🚫 חסימת שעות</h3>
+            <div className="mx-auto mb-4 h-1.5 w-11 rounded-full bg-blush-200" />
+            <h3 className="mb-1 text-lg font-extrabold">חסימת שעות</h3>
             <p className="mb-3 text-sm text-plum-500">
               יום {DAY_NAMES[localDateTime(blockDraft.date, "12:00").getDay()]} ·{" "}
               {localDateTime(blockDraft.date, "12:00").toLocaleDateString("he-IL")}
@@ -742,39 +733,53 @@ function CalendarTab() {
           onClick={closeModal}
         >
           <div
-            className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+            className="w-full max-w-md rounded-t-[32px] bg-white px-6 pb-9 pt-3 shadow-[0_-20px_60px_rgba(0,0,0,0.35)] sm:rounded-[32px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-lg font-bold">{sel.client_name}</h3>
-              {sel.status === "pending" ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                  ⏳ ממתין לאישור
-                </span>
-              ) : (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
-                  ✓ מאושר
-                </span>
+            <div className="mx-auto mb-4 h-1.5 w-11 rounded-full bg-blush-200" />
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] bg-blush-100 text-2xl font-extrabold text-plum-700">
+                {sel.client_name.trim().charAt(0)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-xl font-extrabold leading-tight">{sel.client_name}</h3>
+                <a href={`tel:${sel.client_phone}`} dir="ltr" className="block text-right text-[13px] text-muted">{sel.client_phone}</a>
+              </div>
+              {sel.status === "pending" ? <span className="badge-wait whitespace-nowrap">ממתין</span> : <span className="badge-ok whitespace-nowrap">מאושר</span>}
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 rounded-3xl bg-ground px-4.5 py-4" style={{ paddingInline: 18 }}>
+              <div className="flex items-center gap-3">
+                <CalendarIcon size={20} className="shrink-0 text-blush-500" />
+                <div>
+                  <div className="text-[15px] font-extrabold">
+                    יום {DAY_NAMES[new Date(sel.starts_at).getDay()]}, {new Date(sel.starts_at).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })} · {fmtTime(sel.starts_at)}–{fmtTime(sel.ends_at)}
+                  </div>
+                  <div className="text-xs text-muted">{durationLabel((new Date(sel.ends_at).getTime() - new Date(sel.starts_at).getTime()) / 60000)}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <PlusIcon size={20} className="shrink-0 text-blush-500" />
+                <div>
+                  <div className="text-[15px] font-extrabold">
+                    {sel.services?.name}
+                    {sel.addons && sel.addons.length > 0 && " + " + sel.addons.map((x) => x.name).join(" + ")}
+                  </div>
+                  {sel.addons && sel.addons.length > 0 && (
+                    <div className="text-xs text-muted">{sel.addons.map((x) => `${x.name} (${priceLabel(x.price, x.price_max)})`).join(", ")}</div>
+                  )}
+                </div>
+              </div>
+              {sel.notes && (
+                <div className="flex items-start gap-3">
+                  <MessageIcon size={20} className="shrink-0 text-blush-500" />
+                  <div className="text-[13px] leading-snug text-plum-500">"{sel.notes}"</div>
+                </div>
               )}
             </div>
-            <p className="text-sm">
-              {sel.services?.name} ·{" "}
-              {new Date(sel.starts_at).toLocaleDateString("he-IL", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-              })}{" "}
-              · {fmtTime(sel.starts_at)}–{fmtTime(sel.ends_at)}
-            </p>
-            {sel.addons && sel.addons.length > 0 && (
-              <p className="text-sm text-plum-500">
-                תוספות: {sel.addons.map((x) => `${x.name} (${priceLabel(x.price, x.price_max)})`).join(", ")}
-              </p>
-            )}
-            <div className="mt-1 flex items-center gap-3 text-sm">
-              <a href={`tel:${sel.client_phone}`} className="text-blush-600" dir="ltr">
-                {sel.client_phone} 📞
-              </a>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <a href={`tel:${sel.client_phone}`} className="btn-outline"><PhoneIcon size={16} />חיוג</a>
               <a
                 href={waLink(
                   sel.client_phone,
@@ -782,15 +787,17 @@ function CalendarTab() {
                 )}
                 target="_blank"
                 rel="noopener"
-                className="rounded-full bg-green-500 px-3 py-1 text-xs font-medium text-white"
+                className="btn-outline !border-[#CFEBDD] !bg-success-50 !text-success"
               >
-                וואטסאפ
+                <WhatsAppIcon size={16} />וואטסאפ
               </a>
+              <button className={`btn-outline ${resOpen ? "!border-plum-700" : ""}`} onClick={() => setResOpen((v) => !v)}>
+                <RefreshIcon size={16} />שינוי מועד
+              </button>
             </div>
-            {sel.notes && <p className="mt-2 rounded-xl bg-blush-50 p-2 text-sm">📝 {sel.notes}</p>}
             {resOpen && (
-              <div className="mt-4 rounded-xl border border-blush-200 p-3">
-                <h4 className="mb-2 text-sm font-bold">בחרי מועד חדש</h4>
+              <div className="mt-3 rounded-3xl border border-line p-3.5">
+                <h4 className="mb-2 text-sm font-extrabold">בחרי מועד חדש</h4>
                 <div className="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1">
                   {Array.from({ length: 21 }, (_, i) => {
                     const d = new Date();
@@ -847,32 +854,22 @@ function CalendarTab() {
               </div>
             )}
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-col gap-2">
               {sel.status === "pending" && (
                 <button
-                  className="btn-primary flex-1 !bg-green-600 hover:!bg-green-500"
+                  className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-success text-base font-extrabold text-white shadow-[0_12px_28px_rgba(46,125,91,0.35)] transition active:scale-[0.98] disabled:opacity-40"
                   disabled={busy}
                   onClick={() => setStatus(sel.id, "confirmed")}
                 >
-                  ✓ אישור התור
+                  <CheckIcon size={20} strokeWidth={2.5} />אישור התור – הלקוחה תקבל עדכון
                 </button>
               )}
-              <button
-                className="btn-ghost border border-blush-200"
-                onClick={() => setResOpen((v) => !v)}
-              >
-                🗓 שינוי מועד
-              </button>
-              <button
-                className="btn-ghost border border-red-200 text-red-700"
-                disabled={busy}
-                onClick={() => setStatus(sel.id, "cancelled")}
-              >
-                ביטול התור
-              </button>
-              <button className="btn-ghost" onClick={closeModal}>
-                סגירה
-              </button>
+              <div className="flex items-center justify-between">
+                <button className="btn-ghost text-sm text-danger" disabled={busy} onClick={() => setStatus(sel.id, "cancelled")}>
+                  {sel.status === "pending" ? "דחיית הבקשה" : "ביטול התור"}
+                </button>
+                <button className="btn-ghost text-sm" onClick={closeModal}>סגירה</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1080,7 +1077,7 @@ function ServicesTab() {
             </div>
             <div className="flex flex-wrap justify-end gap-1">
               <button className="btn-ghost text-sm" onClick={() => startEdit(s)}>
-                עריכה ✏️
+                עריכה
               </button>
               <button className="btn-ghost text-sm" onClick={() => toggle(s)}>
                 {s.is_active ? "השבתה" : "הפעלה"}
@@ -1272,7 +1269,7 @@ function AddonsTab() {
             </div>
             <div className="flex flex-wrap justify-end gap-1">
               <button className="btn-ghost text-sm" onClick={() => startEdit(a)}>
-                עריכה ✏️
+                עריכה
               </button>
               <button className="btn-ghost text-sm" onClick={() => toggle(a)}>
                 {a.is_active ? "השבתה" : "הפעלה"}
@@ -1488,7 +1485,7 @@ function HoursTab() {
         </div>
       ))}
       <div className="mt-2 border-t border-blush-100 pt-3">
-        <label className="label">⏱ מרווח מינימום בין תורים (דקות)</label>
+        <label className="label">מרווח מינימום בין תורים (דקות)</label>
         <div className="flex items-center gap-3">
           <input
             className="input !w-24"
@@ -1505,7 +1502,7 @@ function HoursTab() {
         </div>
       </div>
       <div className="border-t border-blush-100 pt-3">
-        <label className="label">📅 זמן מינימום מראש לקביעת תור (שעות)</label>
+        <label className="label">זמן מינימום מראש לקביעת תור (שעות)</label>
         <div className="flex items-center gap-3">
           <input
             className="input !w-24"
@@ -1523,7 +1520,7 @@ function HoursTab() {
         </div>
       </div>
       <div className="border-t border-blush-100 pt-3">
-        <label className="label">📅 פתיחת היומן ללקוחות</label>
+        <label className="label">פתיחת היומן ללקוחות</label>
         {(() => {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
@@ -1721,7 +1718,7 @@ function BlockedTab() {
           onChange={(e) => setReason(e.target.value)}
         />
         <button className="btn-primary" disabled={saving}>
-          {saving ? "שומרת…" : "🚫 חסימה"}
+          {saving ? "שומרת…" : "חסימה"}
         </button>
       </form>
 
@@ -1839,7 +1836,7 @@ function ClientsTab() {
         </div>
         <div className="card !p-3">
           <div className="text-xl font-bold text-green-700">{pushCount}</div>
-          <div className="text-plum-500">🔔 התראות</div>
+          <div className="text-plum-500">התראות</div>
         </div>
       </div>
       <input
@@ -1876,7 +1873,7 @@ function ClientsTab() {
                   pushPhones.has(c.phone) ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"
                 }`}
               >
-                {pushPhones.has(c.phone) ? "🔔 התראות פעילות" : "בלי התראות"}
+                {pushPhones.has(c.phone) ? "התראות פעילות" : "בלי התראות"}
               </span>
             </div>
           </div>
@@ -2042,7 +2039,7 @@ function BroadcastTab() {
         )}
 
         <button className="btn-primary" disabled={!canSend} onClick={() => setConfirming(true)}>
-          📣 שליחה לכל הלקוחות
+          שליחה לכל הלקוחות
         </button>
         {result && <p className="text-center text-sm text-plum-500">{result}</p>}
       </div>
@@ -2073,10 +2070,11 @@ function BroadcastTab() {
           onClick={() => !sending && setConfirming(false)}
         >
           <div
-            className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl"
+            className="w-full max-w-md rounded-t-[32px] bg-white px-6 pb-9 pt-3 sm:rounded-[32px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-1 text-lg font-bold">לשלוח לכל הלקוחות?</h3>
+            <div className="mx-auto mb-4 h-1.5 w-11 rounded-full bg-blush-200" />
+            <h3 className="mb-1 text-lg font-extrabold">לשלוח לכל הלקוחות?</h3>
             <p className="mb-3 text-sm text-plum-500">
               ההודעה תישלח עכשיו ל-<b>{recipients ?? 0} מכשירים</b>. אי אפשר לבטל אחרי השליחה.
             </p>
@@ -2086,7 +2084,7 @@ function BroadcastTab() {
             </div>
             <div className="flex gap-2">
               <button className="btn-primary flex-1" disabled={sending} onClick={send}>
-                {sending ? "שולחת…" : "כן, שלחי 📣"}
+                {sending ? "שולחת…" : "כן, שלחי"}
               </button>
               <button className="btn-ghost" disabled={sending} onClick={() => setConfirming(false)}>
                 חזרה לעריכה
