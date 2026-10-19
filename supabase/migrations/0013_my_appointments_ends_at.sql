@@ -1,5 +1,5 @@
 -- 0013: ends_at באזור האישי (לאירוע יומן גוגל באורך נכון)
--- *** לא הוחלה עדיין – להריץ ב-SQL Editor של פרויקט pretty-easy ***
+-- *** כבר הוחלה על ה-DB ע"י Claude – לתיעוד בלבד ***
 create or replace function public.get_my_appointments(p_token text)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
